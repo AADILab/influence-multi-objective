@@ -42,6 +42,13 @@ class AUV():
             if self.target_id < len(self.targets)-1:
                 # New target
                 self.target_id += 1
+            # Otherwise, I have reached my last target, and it is time to surface
+            else:
+                self.surfaced = True
+                # Now that I have surfaced,
+                # I can use my GPS and no longer have uncertainty about my position
+                self.h_position = self.position
+
 
         self.path.append(deepcopy(self.position))
         self.h_path.append(deepcopy(self.h_position))
@@ -77,6 +84,74 @@ class ASV():
             if line_of_sight(self.position, auv.position, self.connectivity_grid, 0.1):
                 auv.h_position = deepcopy(auv.position)
 
+class POI():
+    def __init__(self, position, value, observation_radius):
+        self.position = position
+        self.value = value
+        self.observation_radius = observation_radius
+
+class AUVInfo():
+    def __init__(self, auv_ind, distance, position):
+        self.auv_ind = auv_ind
+        self.distance = distance
+        self.position = position
+
+class Rewards():
+    def __init__(self, pois, connectivity_grid, collision_step_size):
+        self.pois = pois
+        self.connectivity_grid = connectivity_grid
+        self.collision_step_size = collision_step_size
+
+    def local(self, auv):
+        # No reward for crashing
+        if auv.crashed:
+            return 0.0
+
+        min_distance = np.inf
+        for auv_position in auv.path:
+            for poi in self.pois:
+                # Check line of sight
+                if line_of_sight(auv_position, poi.position, self.connectivity_grid, self.collision_step_size):
+                    distance = np.linalg.norm(auv_position - poi.position)
+                    if distance < min_distance:
+                        min_distance = distance
+
+        return 1./np.max((distance, 1.)) * poi.value
+
+    def get_nearest_auvs(self, auvs):
+        # Initialize storage for which auv was closest to each poi
+        nearest_auvs = [AUVInfo(auv_ind=None, distance=np.inf, position=None) for _ in self.pois]
+
+        # Go through paths and determine which auv was closest to each poi
+        for auv_ind, auv in enumerate(auvs):
+            # This auv only counts if it didn't crash
+            if not auv.crashed:
+                for auv_position in auv.path:
+                    for poi_ind, poi in enumerate(self.pois):
+                        # Check line of sight
+                        if line_of_sight(auv_position, poi.position, self.connectivity_grid, self.collision_step_size):
+                            distance = np.linalg.norm(auv_position - poi.position)
+                            if distance < nearest_auvs[poi_ind].distance:
+                                nearest_auvs[poi_ind] = AUVInfo(auv_ind=auv_ind, distance = distance, position = deepcopy(auv_position))
+
+        return nearest_auvs
+
+    def team(self, auvs):
+        # We need to go through the paths and determine which auv was closest to each poi
+        nearest_auvs = self.get_nearest_auvs(auvs)
+
+        # Now let's compute the value of the observations
+        reward = 0
+        for poi, auv_info in zip(self.pois, nearest_auvs):
+            # Make sure this poi was observed
+            if auv_info.auv_ind is not None and auv_info.distance < poi.observation_radius:
+                reward += 1./np.max((auv_info.distance, 1.)) * poi.value
+        return reward
+
+    def difference(self, auvs, remove_ind, team_reward):
+        auvs_with_ind_removed = auvs[:remove_ind]+auvs[remove_ind+1:]
+        return team_reward - self.team(auvs_with_ind_removed)
+
 class OceanEnv():
     def __init__(self, config):
         mission_dir = Path(config["root_dir"]) / "missions" / config["env"]["mission"]
@@ -89,6 +164,11 @@ class OceanEnv():
         self.num_iterations = int(self.t_final / self.dt)
         self.asv_max_speed = ec['asv']['max_speed']
         self.auv_max_speed = ec['asv']['max_speed']
+        self.collision_step_size = ec['collision_step_size']
+        self.pois = []
+        for poi_position, poi_config in zip(self.mission.pois, ec['pois']):
+            self.pois.append(POI(position=poi_position, value=poi_config['value'], observation_radius=poi_config['observation_radius']))
+        self.rewards = Rewards(self.pois, self.mission.connectivity_grid, self.collision_step_size)
 
     def step(self):
         # Ping auvs

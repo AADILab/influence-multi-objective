@@ -1,6 +1,7 @@
 root_dir: /home/gonzaeve/influence-multi-objective
 env:
   dt: 0.1
+  collision_step_size: 0.1
   asv:
     max_speed: 1.0
     network:
@@ -9,3 +10,29 @@ env:
     max_speed: 1.0
   mission: alpha
   t_final: 100
+  pois:
+    - {value: 1.0, observation_radius: 5.0}
+    - {value: 1.0, observation_radius: 5.0}
+    - {value: 1.0, observation_radius: 5.0}
+    - {value: 1.0, observation_radius: 5.0}
+    - {value: 1.0, observation_radius: 5.0}
+    - {value: 1.0, observation_radius: 5.0}
+    - {value: 1.0, observation_radius: 5.0}
+    - {value: 1.0, observation_radius: 5.0}
+    - {value: 1.0, observation_radius: 5.0}
+    - {value: 1.0, observation_radius: 5.0}
+    - {value: 1.0, observation_radius: 5.0}
+    - {value: 1.0, observation_radius: 5.0}
+    - {value: 1.0, observation_radius: 5.0}
+    - {value: 1.0, observation_radius: 5.0}
+    - {value: 1.0, observation_radius: 5.0}
+    - {value: 1.0, observation_radius: 5.0}
+    - {value: 1.0, observation_radius: 5.0}
+    - {value: 1.0, observation_radius: 5.0}
+    - {value: 1.0, observation_radius: 5.0}
+    - {value: 1.0, observation_radius: 5.0}
+    - {value: 1.0, observation_radius: 5.0}
+    - {value: 1.0, observation_radius: 5.0}
+    - {value: 1.0, observation_radius: 5.0}
+    - {value: 1.0, observation_radius: 5.0}
+    - {value: 1.0, observation_radius: 5.0}
