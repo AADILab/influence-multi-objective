@@ -1,5 +1,11 @@
 {
     "python.analysis.extraPaths": [
         "./influence_moo"
-    ]
+    ],
+    "files.exclude": {
+        "**/__pycache__": true,
+        "**/**.egg-info": true,
+        "**/.vscode": false,
+        "**/deprecated": true
+    }
 }

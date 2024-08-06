@@ -1,7 +1,9 @@
 from copy import deepcopy
 import numpy as np
+from pathlib import Path
 from influence_moo.evo.network import NN
 from influence_moo.utils import out_of_bounds, determine_collision, line_of_sight
+from influence_moo.env.mission import Mission
 
 class AUV():
     def __init__(self, targets, max_velocity):
@@ -46,11 +48,11 @@ class AUV():
         self.surface_path.append(self.surfaced)
 
 class ASV():
-    def __init__(self, position, auvs, connectivity_grid, policy_network):
+    def __init__(self, position, auvs, connectivity_grid, policy_function):
         self.position = position
         self.auvs = auvs
         self.connectivity_grid = connectivity_grid
-        self.policy_network = policy_network
+        self.policy_function = policy_function
         self.crashed = False
         self.path = [deepcopy(self.position)]
 
@@ -68,54 +70,71 @@ class ASV():
 
     def policy(self, observation):
         # Output is vx, vy
-        return self.policy_network.forward(observation)
+        return self.policy_function(observation)
 
     def ping(self):
         for auv in self.auvs:
             if line_of_sight(self.position, auv.position, self.connectivity_grid, 0.1):
                 auv.h_position = deepcopy(auv.position)
 
-
 class OceanEnv():
-    def __init__(self, mission, dt, num_asvs):
-        self.mission = mission
-        self.dt = dt
-        self.num_asvs = num_asvs
+    def __init__(self, config):
+        mission_dir = Path(config["root_dir"]) / "missions" / config["env"]["mission"]
+        self.mission = Mission(mission_dir)
 
-    def run(self, num_iterations):
+        self.config = config
+        ec = self.config["env"]
+        self.dt = ec["dt"]
+        self.t_final = ec["t_final"]
+        self.num_iterations = int(self.t_final / self.dt)
+        self.asv_max_speed = ec['asv']['max_speed']
+        self.auv_max_speed = ec['asv']['max_speed']
+
+    def step(self):
+        # Ping auvs
+        for asv in self.asvs:
+            asv.ping()
+
+        # Move asvs first
+        for asv in self.asvs:
+            if not asv.crashed:
+                asv_velocity = asv.policy(asv.get_observation())
+                new_position = asv.position + asv_velocity*self.dt
+                if not out_of_bounds(new_position, self.mission.connectivity_grid.shape[0], self.mission.connectivity_grid.shape[1]):
+                    asv.position += asv_velocity*self.dt
+
+            if determine_collision(asv.position, self.mission.connectivity_grid):
+                asv.crashed = True
+
+            asv.path.append(deepcopy(asv.position))
+
+        # Move auvs
+        for auv in self.auvs:
+            # Wave moves auv
+            if not auv.crashed:
+                auv.position += np.array([ self.mission.wave_x(auv.position[0])*self.dt, self.mission.wave_y(auv.position[1])*self.dt ])
+            if determine_collision(auv.position, self.mission.connectivity_grid):
+                auv.crashed = True
+            # auv acts based on hypothesis position
+            if not auv.crashed:
+                auv.update(self.dt)
+            if determine_collision(auv.position, self.mission.connectivity_grid):
+                auv.crashed = True
+
+    def run(self, asv_policy_functions):
         # Let's give it a try
         paths = [self.mission.pathA, self.mission.pathB, self.mission.pathC, self.mission.pathD]
         self.auvs = [AUV(path, 1.) for path in paths]
 
-        policy_network = NN(num_inputs=2+2*len(self.auvs)+self.mission.connectivity_grid.size, num_hidden=[20,20], num_outputs = 2)
-        self.asv = ASV(position=self.mission.root_node[0].astype(float), auvs=self.auvs, connectivity_grid=self.mission.connectivity_grid, policy_network=policy_network)
+        self.asvs = [
+            ASV(
+                position=self.mission.root_node[0].astype(float),
+                auvs=self.auvs,
+                connectivity_grid=self.mission.connectivity_grid,
+                policy_function=policy_func
+            )
+            for policy_func in asv_policy_functions
+        ]
 
-        for _ in range(num_iterations):
-            # Ping auvs
-            self.asv.ping()
-
-            # Move asv first
-            if not self.asv.crashed:
-                self.asv_velocity = self.asv.policy(self.asv.get_observation())
-                new_position = self.asv.position + self.asv_velocity*self.dt
-                if not out_of_bounds(new_position, self.mission.connectivity_grid.shape[0], self.mission.connectivity_grid.shape[1]):
-                    self.asv.position += self.asv_velocity*self.dt
-
-            if determine_collision(self.asv.position, self.mission.connectivity_grid):
-                self.asv.crashed = True
-
-            self.asv.path.append(deepcopy(self.asv.position))
-
-            # Move auvs
-            for id, auv in enumerate(self.auvs):
-                # Ping all the auvs from the starting point
-                # Wave moves auv
-                if not auv.crashed:
-                    auv.position += np.array([ self.mission.wave_x(auv.position[0])*self.dt, self.mission.wave_y(auv.position[1])*self.dt ])
-                if determine_collision(auv.position, self.mission.connectivity_grid):
-                    auv.crashed = True
-                # auv acts based on hypothesis position
-                if not auv.crashed:
-                    auv.update(self.dt)
-                if determine_collision(auv.position, self.mission.connectivity_grid):
-                    auv.crashed = True
+        for _ in range(self.num_iterations):
+            self.step()

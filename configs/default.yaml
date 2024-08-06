@@ -1,0 +1,11 @@
+root_dir: /home/gonzaeve/influence-multi-objective
+env:
+  dt: 0.1
+  asv:
+    max_speed: 1.0
+    network:
+      num_hidden: [20,20]
+  auv:
+    max_speed: 1.0
+  mission: alpha
+  t_final: 100
