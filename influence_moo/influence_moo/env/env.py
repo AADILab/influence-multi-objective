@@ -345,7 +345,7 @@ class Rewards():
                         G_j - G_ij for G_j, G_ij in zip(counterfactual_G_j_list, counterfactual_G_ij_list)
                     ]
                     indirect_difference_ij_list = [
-                        D_i - D_ij for D_i, D_ij in zip(auv_rewards, difference_ij_list)
+                        auv_rewards[auv_ind] - D_ij for D_ij in difference_ij_list
                     ]
                     decomposed_auv_rewards.append(indirect_difference_ij_list)
                 # Now map this to auv rewards
