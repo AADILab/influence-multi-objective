@@ -98,14 +98,28 @@ class AUVInfo():
         self.position = position
 
 class Rewards():
-    """Rewards are based on AUV paths and influence heuristics"""
-    def __init__(self, pois, connectivity_grid, collision_step_size, influence_heuristic):
+    """Rewards are based on AUV/ASV paths and influence heuristics"""
+    def __init__(self, pois, connectivity_grid, collision_step_size, \
+            influence_heuristic, influence_type, auv_reward, asv_reward, \
+            multi_reward, distance_threshold
+        ):
+        """
+        influence_heuristic: line_of_sight, distance_threshold
+        influence_type: all_or_nothing, granular
+        auv_reward: global, local, difference
+        asv_reward: global, local, difference, indirect_difference
+        multi_reward: single, multiple
+        """
         self.pois = pois
         self.connectivity_grid = connectivity_grid
         self.collision_step_size = collision_step_size
         self.influence_heuristic = influence_heuristic
+        self.influence_type = influence_type
+        self.auv_reward = auv_reward
+        self.asv_reward = asv_reward
+        self.multi_reward = multi_reward
 
-    def local(self, auv):
+    def local_auv_reward(self, auv):
         # No reward for crashing
         if auv.crashed:
             return 0.0
@@ -120,6 +134,9 @@ class Rewards():
                         min_distance = distance
 
         return 1./np.max((distance, 1.)) * poi.value
+
+    def local_asv_reward(self, auvs, asv):
+        pass
 
     def get_nearest_auvs(self, auvs):
         # Initialize storage for which auv was closest to each poi
@@ -139,8 +156,8 @@ class Rewards():
 
         return nearest_auvs
 
-    def team(self, auvs):
-        """Team reward for entire team"""
+    def global_(self, auvs):
+        """Global reward for entire team"""
         # We need to go through the paths and determine which auv was closest to each poi
         nearest_auvs = self.get_nearest_auvs(auvs)
 
@@ -162,6 +179,11 @@ class Rewards():
         # Binary influence computation. If you have line of sight, yes influence. No line of sight, no influence
         if self.influence_heuristic == "line_of_sight":
             if line_of_sight(auv_position, asv_position, self.connectivity_grid, self.collision_step_size):
+                return 1.0
+            else:
+                return 0.0
+        elif self.influence_heuristic == "distance_threshold":
+            if np.linalg.norm(auv_position-asv_position) < self.distance_threshold:
                 return 1.0
             else:
                 return 0.0
@@ -210,6 +232,114 @@ class Rewards():
         # Generate counterfactual auvs that have states removed where they are influenced
         counterfactual_auvs = self.counterfactual_influenced_agents(auvs, influence_array_asv)
         return team_reward - self.team(counterfactual_auvs)
+
+    def remove_asv_influence(self, auvs, asv, asv_ind):
+        pass
+
+    def indirect_difference_auv(self, auvs, asvs, asv_ind, auv_ind, difference_reward):
+        """Compute indirect difference reward for ASV on one AUV"""
+        pass
+
+    @staticmethod
+    def remove_agent(agents, agent_ind):
+        return agents[:agent_ind]+agents[agent_ind+1:]
+
+    def compute(self, auvs, asvs):
+        """
+        influence_heuristic: line_of_sight, distance_threshold
+        influence_type: all_or_nothing, granular
+        auv_reward: global, local, difference
+        asv_reward: global, local, difference, indirect_difference_team, indirect_difference_auv
+        multi_reward: single, multiple
+        """
+        # Compute global reward
+        G = self.global_(auvs=auvs)
+
+        # Global reward for ASVs
+        if self.asv_reward == "global":
+            return [G for asv in asvs]+[G]
+        # Local reward for ASVs
+        elif self.asv_reward == "local":
+            return [self.local_asv_reward(auvs=auvs, asv=asv) for asv in asvs]+[G]
+        # Difference reward for ASVs
+        elif self.asv_reward == "difference":
+            # Removing an ASV's path does not actually change G
+            # Hence, the difference reward is always 0.0
+            return [0.0 for asv in asvs]+[G]
+        # Indirect difference reward for ASVs based on indirect contribution to team
+        elif self.asv_reward == "indirect_difference_team" or self.asv_reward == "indirect_difference_auv":
+            # Create influence array that tells us how much each AUV was influenced
+            influence_array = self.influence_array(auvs=auvs, asvs=asvs)
+            # Copy asvs with asv j removed
+            asvs_minus_j_list = [
+                self.remove_agent(asvs, asv_ind) for asv_ind in range(len(asvs))
+            ]
+            # Create counterfactual influence arrays when we remove each asv
+            counterfactual_influence_list = [
+                self.influence_array(auvs, asvs_minus_j) for asvs_minus_j in asvs_minus_j_list
+            ]
+            # Each asv gets an influence array that is (influence) - (counterfactual influence with that asv removed)
+            influence_j_list = [
+                influence_array - counterfactual_influence for counterfactual_influence in counterfactual_influence_list
+            ]
+            # Create counterfactual AUV paths with the influence of asv j removed
+            auvs_minus_j_list = [
+                self.remove_influence(auvs, influence_j) for influence_j in influence_j_list
+            ]
+            # Compute counterfactual G with the influence of asv j removed
+            counterfactual_G_j_list = [
+                self.global_(auvs_minus_j) for auvs_minus_j in auvs_minus_j_list
+            ]
+            if self.auv_reward == "indirect_difference_team":
+                # Finally compute an indirect difference reward with these counterfactual paths
+                return [
+                    G-counterfactual_G for counterfactual_G in counterfactual_G_j_list
+                ]
+
+        # Rewards for AUVs that will be used to derive ASV rewards
+        if self.auv_reward == "global":
+            auv_rewards = [G for auv in auvs]
+        elif self.auv_reward == "local":
+            auv_rewards = [self.local_auv_reward(auv) for auv in auvs]
+        elif self.auv_reward == "difference":
+            # Copy paths with auv i removed
+            auvs_minus_i_list = [self.remove_agent(auvs, auv_ind) for auv_ind in range(len(auvs))]
+            # Counterfactual G for each removed auv
+            counterfactual_G_remove_i_list = [
+                self.global_(auvs=auvs_minus_i) for auvs_minus_i in auvs_minus_i_list
+            ]
+            # Compute D for each auv
+            auv_rewards = [
+                G-counterfactual_G for counterfactual_G in counterfactual_G_remove_i_list
+            ]
+
+        # Rewards for ASVs that are derived from AUV rewards
+        if self.asv_reward == "indirect_difference_auv":
+            if self.auv_reward == "global" or self.auv_reward == "local":
+                pass
+            elif self.auv_reward == "difference":
+                # Decompose each individual auv reward into many rewards. One for each asv.
+                decomposed_auv_rewards = []
+                for auv_ind in range(len(auvs)):
+                    auvs_minus_ij_list = [
+                        self.remove_agent(auvs_minus_j, auv_ind) for auvs_minus_j in auvs_minus_j_list
+                    ]
+                    counterfactual_G_ij_list = [
+                        self.global_(auvs_minus_ij) for auvs_minus_ij in auvs_minus_ij_list
+                    ]
+                    difference_ij_list = [
+                        G_j - G_ij for G_j, G_ij in zip(counterfactual_G_j_list, counterfactual_G_ij_list)
+                    ]
+                    indirect_difference_ij_list = [
+                        D_i - D_ij for D_i, D_ij in zip(auv_rewards, difference_ij_list)
+                    ]
+                    decomposed_auv_rewards.append(indirect_difference_ij_list)
+                # Now map this to auv rewards
+                asv_rewards = [[None for auv in auvs] for asv in asvs]
+                for j in range(len(auvs)):
+                    for i in range(len(asvs)):
+                        asv_rewards[i][j] = decomposed_auv_rewards[j][i]
+                return asv_rewards + [G]
 
 
     # def compute_influence_history(self, asv, auv):
