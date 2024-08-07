@@ -257,7 +257,6 @@ class Rewards():
         """
         # Compute global reward
         G = self.global_(auvs=auvs)
-        print("Computed G")
 
         # Global reward for ASVs
         if self.asv_reward == "global":
@@ -274,36 +273,26 @@ class Rewards():
         elif self.asv_reward == "indirect_difference_team" or self.asv_reward == "indirect_difference_auv":
             # Create influence array that tells us how much each AUV was influenced
             influence_array = self.influence_array(auvs=auvs, asvs=asvs)
-            print("Computed influence_array")
             # Copy asvs with asv j removed
             asvs_minus_j_list = [
                 self.remove_agent(asvs, asv_ind) for asv_ind in range(len(asvs))
             ]
-            print("Computed asvs_minus_j_list")
             # Create counterfactual influence arrays when we remove each asv
             counterfactual_influence_list = [
                 self.influence_array(auvs, asvs_minus_j) for asvs_minus_j in asvs_minus_j_list
             ]
-            print("Computed counterfactual_influence_list")
             # Each asv gets an influence array that is (influence) - (counterfactual influence with that asv removed)
             influence_j_list = [
                 influence_array - counterfactual_influence for counterfactual_influence in counterfactual_influence_list
             ]
-            print("Computed influence_j_list")
             # Create counterfactual AUV paths with the influence of asv j removed
             auvs_minus_j_list = [
                 self.remove_influence(auvs, influence_j) for influence_j in influence_j_list
             ]
-            print("Computed auvs_minus_j_list")
-            print(auvs_minus_j_list)
             # Compute counterfactual G with the influence of asv j removed
             counterfactual_G_j_list = [
                 self.global_(auvs_minus_j) for auvs_minus_j in auvs_minus_j_list
             ]
-            # counterfactual_G_j_list = []
-            # for auvs_minus_j in auvs_minus_j_list:
-            #     counterfactual_G_j_list.append(self.global_(auvs_minus_j))
-            print("Computed counterfactual_G_j_list")
             if self.asv_reward == "indirect_difference_team":
                 # Finally compute an indirect difference reward with these counterfactual paths
                 return [
