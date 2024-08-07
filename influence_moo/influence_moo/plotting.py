@@ -7,9 +7,9 @@ from influence_moo.waves import sample_waves
 def plot_grid(grid, ax=None, *args, **kwargs):
     """This is a utility function that plots grids with the correct (x,y) positions"""
     if ax is None:
-        plt.imshow(np.rot90(grid), *args, **kwargs, extent=(0.0, grid.shape[1], 0.0, grid.shape[0]))
+        plt.imshow(np.rot90(grid), *args, **kwargs, extent=(0.0, grid.shape[0], 0.0, grid.shape[1]))
     else:
-        ax.imshow(np.rot90(grid), *args, **kwargs, extent=(0.0, grid.shape[1], 0.0, grid.shape[0]))
+        ax.imshow(np.rot90(grid), *args, **kwargs, extent=(0.0, grid.shape[0], 0.0, grid.shape[1]))
 
 def plot_pts(pts, ax=None, *args, **kwargs):
     """This is a utility function that plots the (x,y) points specified"""
