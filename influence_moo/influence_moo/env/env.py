@@ -17,7 +17,8 @@ class AUV():
         self.surfaced = False
         self.path = [deepcopy(self.position)]
         self.h_path = [deepcopy(self.h_position)]
-        self.surface_path = [self.surfaced]
+        self.surface_history = [self.surfaced]
+        self.crash_history = [self.crashed]
 
     def update(self, dt):
         # Am I at my target?
@@ -49,10 +50,10 @@ class AUV():
                 # I can use my GPS and no longer have uncertainty about my position
                 self.h_position = self.position
 
-
         self.path.append(deepcopy(self.position))
         self.h_path.append(deepcopy(self.h_position))
-        self.surface_path.append(self.surfaced)
+        self.surface_history.append(self.surfaced)
+        self.crash_history.append(self.crashed)
 
 class ASV():
     def __init__(self, position, auvs, connectivity_grid, policy_function):
@@ -97,10 +98,12 @@ class AUVInfo():
         self.position = position
 
 class Rewards():
-    def __init__(self, pois, connectivity_grid, collision_step_size):
+    """Rewards are based on AUV paths and influence heuristics"""
+    def __init__(self, pois, connectivity_grid, collision_step_size, influence_heuristic):
         self.pois = pois
         self.connectivity_grid = connectivity_grid
         self.collision_step_size = collision_step_size
+        self.influence_heuristic = influence_heuristic
 
     def local(self, auv):
         # No reward for crashing
@@ -137,6 +140,7 @@ class Rewards():
         return nearest_auvs
 
     def team(self, auvs):
+        """Team reward for entire team"""
         # We need to go through the paths and determine which auv was closest to each poi
         nearest_auvs = self.get_nearest_auvs(auvs)
 
@@ -148,9 +152,81 @@ class Rewards():
                 reward += 1./np.max((auv_info.distance, 1.)) * poi.value
         return reward
 
-    def difference(self, auvs, remove_ind, team_reward):
-        auvs_with_ind_removed = auvs[:remove_ind]+auvs[remove_ind+1:]
+    def difference(self, auvs, auv_ind, team_reward):
+        """Difference reward for a single AUV"""
+        auvs_with_ind_removed = auvs[:auv_ind]+auvs[auv_ind+1:]
         return team_reward - self.team(auvs_with_ind_removed)
+
+    def influence(self, asv_position, auv_position):
+        """Compute an influence heuristic telling us the influence of an ASV on an AUV"""
+        # Binary influence computation. If you have line of sight, yes influence. No line of sight, no influence
+        if self.influence_heuristic == "line_of_sight":
+            if line_of_sight(auv_position, asv_position, self.connectivity_grid, self.collision_step_size):
+                return 1.0
+            else:
+                return 0.0
+
+    def influence_array(self, auvs, asvs):
+        """Compute array that tells us how much support each auv received at each step"""
+        # Init array
+        num_steps = len(auvs[0].path)
+        num_auvs = len(auvs)
+        influence_array = np.zeros((num_steps, num_auvs))
+
+        # Iterate through trajectories
+        for i in range(num_steps):
+            # Tell me how much each auv was supported at this step
+            for a, auv in enumerate(auvs):
+                for asv in asvs:
+                    influence_array[i, a] += self.influence(asv.position, auv.position)
+
+        return influence_array
+
+    def counterfactual_influence(self, auvs, asvs, asv_ind):
+        """Compute an influence array if we remove an ASV"""
+        asvs_with_ind_removed = asvs[:asv_ind]+asvs[asv_ind+1:]
+        return self.influence_array(auvs=auvs, asvs=asvs_with_ind_removed)
+
+    def counterfactual_influenced_agents(self, auvs, influence_array):
+        """Remove auv states that are influenced by an asv according to influence array"""
+        counterfactual_auvs = deepcopy(auvs)
+        num_steps = influence_array.shape[0]
+        num_auvs = influence_array.shape[1]
+        for i in range(num_steps):
+            for a in range(num_auvs):
+                if influence_array[i, a] > 0.0:
+                    counterfactual_auvs[a].path[i] = np.array([np.inf, np.inf])
+        return counterfactual_auvs
+
+    def influence_difference(self, auvs, asvs, asv_ind):
+        return self.influence_array(auvs=auvs, asvs=asvs) - \
+            self.counterfactual_influence(auvs=auvs, asvs=asvs, asv_ind=asv_ind)
+
+    def indirect_difference_team(self, auvs, asvs, asv_ind, team_reward):
+        """Compute indirect difference reward for ASV on team reward"""
+        # Influence array for just this ASV
+        influence_array_asv = self.influence_difference(auvs=auvs,asvs=asvs, asv_ind=asv_ind)
+
+        # Generate counterfactual auvs that have states removed where they are influenced
+        counterfactual_auvs = self.counterfactual_influenced_agents(auvs, influence_array_asv)
+        return team_reward - self.team(counterfactual_auvs)
+
+
+    # def compute_influence_history(self, asv, auv):
+    #     """Compute influence heuristic telling us when ASV is supporting AUV"""
+    #     influence_history = []
+    #     for auv_position, asv_position in zip(auv.path, asv.path):
+    #         influence_history.append(self.compute_influence(asv_position, auv_position))
+    #     return influence_history
+
+    # def compute_influence_history
+
+    # def indirect_difference(self, asvs, auvs, asv_ind, difference_rewards):
+    #     """Indirect difference reward vector for single ASV across multiple AUVs"""
+    #     counterfactual_auvs = deepcopy(auvs)
+
+    #     # Now remove
+
 
 class OceanEnv():
     def __init__(self, config):
