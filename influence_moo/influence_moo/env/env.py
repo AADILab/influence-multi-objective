@@ -148,11 +148,13 @@ class Rewards():
             if not auv.crashed:
                 for auv_position in auv.path:
                     for poi_ind, poi in enumerate(self.pois):
-                        # Check line of sight
-                        if line_of_sight(auv_position, poi.position, self.connectivity_grid, self.collision_step_size):
-                            distance = np.linalg.norm(auv_position - poi.position)
-                            if distance < nearest_auvs[poi_ind].distance:
-                                nearest_auvs[poi_ind] = AUVInfo(auv_ind=auv_ind, distance = distance, position = deepcopy(auv_position))
+                        # Make sure auv was not counterfactually removed
+                        if not np.isnan(auv_position[0]) and not np.isnan(auv_position[1]):
+                            # Check line of sight
+                            if line_of_sight(auv_position, poi.position, self.connectivity_grid, self.collision_step_size):
+                                distance = np.linalg.norm(auv_position - poi.position)
+                                if distance < nearest_auvs[poi_ind].distance:
+                                    nearest_auvs[poi_ind] = AUVInfo(auv_ind=auv_ind, distance = distance, position = deepcopy(auv_position))
 
         return nearest_auvs
 
@@ -200,7 +202,7 @@ class Rewards():
             # Tell me how much each auv was supported at this step
             for a, auv in enumerate(auvs):
                 for asv in asvs:
-                    influence_array[i, a] += self.influence(asv.position, auv.position)
+                    influence_array[i, a] += self.influence(asv.path[i], auv.path[i])
 
         return influence_array
 
@@ -209,15 +211,16 @@ class Rewards():
         asvs_with_ind_removed = asvs[:asv_ind]+asvs[asv_ind+1:]
         return self.influence_array(auvs=auvs, asvs=asvs_with_ind_removed)
 
-    def counterfactual_influenced_agents(self, auvs, influence_array):
+    def remove_influence(self, auvs, influence_array):
         """Remove auv states that are influenced by an asv according to influence array"""
+        # MAKE A DEEPCOPY BECAUSE THE AUV OBJECTS WILL BE MODIFIED
         counterfactual_auvs = deepcopy(auvs)
         num_steps = influence_array.shape[0]
         num_auvs = influence_array.shape[1]
         for i in range(num_steps):
             for a in range(num_auvs):
                 if influence_array[i, a] > 0.0:
-                    counterfactual_auvs[a].path[i] = np.array([np.inf, np.inf])
+                    counterfactual_auvs[a].path[i] = np.array([np.nan, np.nan])
         return counterfactual_auvs
 
     def influence_difference(self, auvs, asvs, asv_ind):
@@ -254,6 +257,7 @@ class Rewards():
         """
         # Compute global reward
         G = self.global_(auvs=auvs)
+        print("Computed G")
 
         # Global reward for ASVs
         if self.asv_reward == "global":
@@ -270,27 +274,37 @@ class Rewards():
         elif self.asv_reward == "indirect_difference_team" or self.asv_reward == "indirect_difference_auv":
             # Create influence array that tells us how much each AUV was influenced
             influence_array = self.influence_array(auvs=auvs, asvs=asvs)
+            print("Computed influence_array")
             # Copy asvs with asv j removed
             asvs_minus_j_list = [
                 self.remove_agent(asvs, asv_ind) for asv_ind in range(len(asvs))
             ]
+            print("Computed asvs_minus_j_list")
             # Create counterfactual influence arrays when we remove each asv
             counterfactual_influence_list = [
                 self.influence_array(auvs, asvs_minus_j) for asvs_minus_j in asvs_minus_j_list
             ]
+            print("Computed counterfactual_influence_list")
             # Each asv gets an influence array that is (influence) - (counterfactual influence with that asv removed)
             influence_j_list = [
                 influence_array - counterfactual_influence for counterfactual_influence in counterfactual_influence_list
             ]
+            print("Computed influence_j_list")
             # Create counterfactual AUV paths with the influence of asv j removed
             auvs_minus_j_list = [
                 self.remove_influence(auvs, influence_j) for influence_j in influence_j_list
             ]
+            print("Computed auvs_minus_j_list")
+            print(auvs_minus_j_list)
             # Compute counterfactual G with the influence of asv j removed
             counterfactual_G_j_list = [
                 self.global_(auvs_minus_j) for auvs_minus_j in auvs_minus_j_list
             ]
-            if self.auv_reward == "indirect_difference_team":
+            # counterfactual_G_j_list = []
+            # for auvs_minus_j in auvs_minus_j_list:
+            #     counterfactual_G_j_list.append(self.global_(auvs_minus_j))
+            print("Computed counterfactual_G_j_list")
+            if self.asv_reward == "indirect_difference_team":
                 # Finally compute an indirect difference reward with these counterfactual paths
                 return [
                     G-counterfactual_G for counterfactual_G in counterfactual_G_j_list
@@ -340,23 +354,6 @@ class Rewards():
                     for i in range(len(asvs)):
                         asv_rewards[i][j] = decomposed_auv_rewards[j][i]
                 return asv_rewards + [G]
-
-
-    # def compute_influence_history(self, asv, auv):
-    #     """Compute influence heuristic telling us when ASV is supporting AUV"""
-    #     influence_history = []
-    #     for auv_position, asv_position in zip(auv.path, asv.path):
-    #         influence_history.append(self.compute_influence(asv_position, auv_position))
-    #     return influence_history
-
-    # def compute_influence_history
-
-    # def indirect_difference(self, asvs, auvs, asv_ind, difference_rewards):
-    #     """Indirect difference reward vector for single ASV across multiple AUVs"""
-    #     counterfactual_auvs = deepcopy(auvs)
-
-    #     # Now remove
-
 
 class OceanEnv():
     def __init__(self, config):
