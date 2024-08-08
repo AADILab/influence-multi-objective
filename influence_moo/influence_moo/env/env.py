@@ -260,15 +260,15 @@ class Rewards():
 
         # Global reward for ASVs
         if self.asv_reward == "global":
-            return [G for asv in asvs]+[G]
+            return [G for asv in asvs], G
         # Local reward for ASVs
         elif self.asv_reward == "local":
-            return [self.local_asv_reward(auvs=auvs, asv=asv) for asv in asvs]+[G]
+            return [self.local_asv_reward(auvs=auvs, asv=asv) for asv in asvs], G
         # Difference reward for ASVs
         elif self.asv_reward == "difference":
             # Removing an ASV's path does not actually change G
             # Hence, the difference reward is always 0.0
-            return [0.0 for asv in asvs]+[G]
+            return [0.0 for asv in asvs], G
         # Indirect difference reward for ASVs based on indirect contribution to team
         elif self.asv_reward == "indirect_difference_team" or self.asv_reward == "indirect_difference_auv":
             # Create influence array that tells us how much each AUV was influenced
@@ -297,7 +297,7 @@ class Rewards():
                 # Finally compute an indirect difference reward with these counterfactual paths
                 return [
                     G-counterfactual_G for counterfactual_G in counterfactual_G_j_list
-                ]
+                ], G
 
         # Rewards for AUVs that will be used to derive ASV rewards
         if self.auv_reward == "global":
@@ -342,7 +342,7 @@ class Rewards():
                 for j in range(len(auvs)):
                     for i in range(len(asvs)):
                         asv_rewards[i][j] = decomposed_auv_rewards[j][i]
-                return asv_rewards + [G]
+                return asv_rewards, G
 
 class OceanEnv():
     def __init__(self, config):

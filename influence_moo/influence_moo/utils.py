@@ -50,3 +50,16 @@ def line_of_sight(positionA, positionB, connectivity_grid, step_size):
         return True
     else:
         return False
+
+# Check whether two paths are the same path
+def check_path(pathA, pathB):
+    for posA, posB in zip(pathA, pathB):
+        # Removed positions
+        if np.isnan(posA[0]) or np.isnan(posA[1]) or np.isnan(posB[0]) or np.isnan(posB[1]):
+            # Check that all positions are removed
+            if not(np.isnan(posA[0]) and np.isnan(posA[1]) and np.isnan(posB[0]) and np.isnan(posB[1])):
+                return False
+        else:
+            if not np.allclose(posA, posB):
+                return False
+    return True
