@@ -104,6 +104,7 @@ class Rewards():
             multi_reward, distance_threshold
         ):
         """
+        TODO: Counterfactual influence vs local influence
         influence_heuristic: line_of_sight, distance_threshold
         influence_type: all_or_nothing, granular
         auv_reward: global, local, difference
@@ -136,7 +137,14 @@ class Rewards():
         return 1./np.max((distance, 1.)) * poi.value
 
     def local_asv_reward(self, auvs, asv):
-        pass
+        # Maximize "local" influence on auvs
+        # (Don't pay attention to what other asvs are doing)
+        # (or even really what the AUVs are doing)
+        reward = 0.
+        for auv in auvs:
+            for auv_position, asv_position in zip(auv.path, asv.path):
+                reward += self.influence(asv_position, auv_position)
+        return reward
 
     def get_nearest_auvs(self, auvs):
         # Initialize storage for which auv was closest to each poi
@@ -342,7 +350,10 @@ class Rewards():
                 for j in range(len(auvs)):
                     for i in range(len(asvs)):
                         asv_rewards[i][j] = decomposed_auv_rewards[j][i]
-                return asv_rewards, G
+                if self.multi_reward == "multiple":
+                    return asv_rewards, G
+                elif self.multi_reward == "single":
+                    return [sum(rewards_per_asv) for rewards_per_asv in asv_rewards], G
 
 class OceanEnv():
     def __init__(self, config):

@@ -3,6 +3,11 @@ Unit tests to check reward functions work how I expect them to
 
 NOTE: TESTS ARE NOT EXTENSIVE!!! Bugs can sneak past them.
 No guarantees of bug-free code just because the unit tests are happy
+
+To run individual tests:
+python tests/test_rewards.py TestRewards.test_spoof_0b
+or
+python -m unittest tests.test_rewards.TestRewards.test_spoof_0b
 """
 import unittest
 from copy import deepcopy
@@ -12,10 +17,19 @@ from influence_moo.env.env import Rewards, AUV, ASV, POI
 from influence_moo.plotting import plot_grid, plot_pts
 from influence_moo.utils import check_path
 
-VISUALIZE=False
+class Spoof():
+    def __init__(self, pois, auvs, asvs, connectivity_grid, collision_step_size):
+        self.pois = pois
+        self.auvs = auvs
+        self.asvs = asvs
+        self.connectivity_grid = connectivity_grid
+        self.collision_step_size = collision_step_size
 
 class TestRewards(unittest.TestCase):
-    def test_spoof_0(self):
+    def setUp(self):
+        self.VISUALIZE = False
+
+    def setup_spoof_0(self):
         # Spoof a rollout
         connectivity_grid = np.ones((20, 10))
         connectivity_grid[10,:] = 0.0
@@ -69,7 +83,7 @@ class TestRewards(unittest.TestCase):
         asv1_ys = np.linspace(8,8,100)
         asvs[1].path = np.array([asv1_xs, asv1_ys]).T
 
-        if VISUALIZE:
+        if self.VISUALIZE:
             fig, ax = plt.subplots(1,1,dpi=100)
             plot_grid(connectivity_grid, cmap='tab10_r')
             plot_pts(poi_positions, ax, marker='o', fillstyle='none', linestyle='none',color='tab:green')
@@ -82,11 +96,26 @@ class TestRewards(unittest.TestCase):
             ax.set_title("Rollout for Testing Rewards")
             plt.show()
 
-        """ I'm going to breakdown the rewards process and see if the output is correct at each step"""
+        self.spoof_0 = Spoof(pois, auvs, asvs, connectivity_grid, collision_step_size=0.1)
+
+    def get_spoof_0(self):
+        if not "spoof_0" in self.__dict__:
+            self.setup_spoof_0()
+        return self.spoof_0
+
+    def test_spoof_0a(self):
+        """Test granular indirect difference reward to auvs' difference rewards as multiple rewards
+
+        I'm going to breakdown the rewards process and see if the output is correct at each step
+        """
+        spoof_0 = self.get_spoof_0()
+        pois, auvs, asvs, connectivity_grid, collision_step_size = \
+            spoof_0.pois, spoof_0.auvs, spoof_0.asvs, spoof_0.connectivity_grid, spoof_0.collision_step_size
+
         rewards = Rewards(
             pois = pois,
             connectivity_grid = connectivity_grid,
-            collision_step_size = 0.1,
+            collision_step_size = collision_step_size,
             influence_heuristic = "line_of_sight",
             influence_type = "granular",
             auv_reward = "difference",
@@ -285,6 +314,52 @@ class TestRewards(unittest.TestCase):
         self.assertTrue(np.allclose(actual_asv_rewards, expected_asv_rewards), \
             "Automatically computed Indirect Difference Rewards based on individual AUVs does not match expected rewards")
         self.assertTrue(G==actual_G, "G in rewards.compute() does not match G from rewards._global()")
+
+    def test_spoof_0b(self):
+        """Test granular indirect difference reward from auvs' difference rewards as single rewards"""
+        spoof_0 = self.get_spoof_0()
+        pois, auvs, asvs, connectivity_grid, collision_step_size = \
+            spoof_0.pois, spoof_0.auvs, spoof_0.asvs, spoof_0.connectivity_grid, spoof_0.collision_step_size
+
+        rewards = Rewards(
+            pois = pois,
+            connectivity_grid = connectivity_grid,
+            collision_step_size = collision_step_size,
+            influence_heuristic = "line_of_sight",
+            influence_type = "granular",
+            auv_reward = "difference",
+            asv_reward = "indirect_difference_auv",
+            multi_reward = "single",
+            distance_threshold = None
+        )
+
+        expected_out = [0.3, 1.2]
+        actual_out, G = rewards.compute(auvs, asvs)
+        self.assertTrue(np.array(actual_out).shape == (2,),
+            "Expected single reward for each asv. This is multiple rewards per asv")
+        self.assertTrue(np.allclose(actual_out, expected_out),
+            "Computed asv rewards do not match expected asv rewards")
+
+    def test_spoof_0c(self):
+        """Test all or nothing influence"""
+        spoof_0 = self.get_spoof_0()
+        pois, auvs, asvs, connectivity_grid, collision_step_size = \
+            spoof_0.pois, spoof_0.auvs, spoof_0.asvs, spoof_0.connectivity_grid, spoof_0.collision_step_size
+
+        rewards = Rewards(
+            pois = pois,
+            connectivity_grid = connectivity_grid,
+            collision_step_size = collision_step_size,
+            influence_heuristic = "line_of_sight",
+            influence_type = "all_or_nothing",
+            auv_reward = "difference",
+            asv_reward = "indirect_difference_team",
+            multi_reward = "single",
+            distance_threshold = None
+        )
+
+        print(rewards.compute(auvs, asvs))
+
 
 if __name__ == '__main__':
     unittest.main()
