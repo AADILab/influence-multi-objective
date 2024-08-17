@@ -13,7 +13,7 @@ import unittest
 from copy import deepcopy
 import numpy as np
 import matplotlib.pyplot as plt
-from influence_moo.env.env import Rewards, AUV, ASV, POI
+from influence_moo.env.env import Rewards, AUV, ASV, POI, remove_agent
 from influence_moo.plotting import plot_grid, plot_pts
 from influence_moo.utils import check_path
 
@@ -138,7 +138,7 @@ class TestRewards(unittest.TestCase):
 
         # Remove asvs
         asvs_minus_j_list = [
-            rewards.remove_agent(asvs, asv_ind) for asv_ind in range(len(asvs))
+            remove_agent(asvs, asv_ind) for asv_ind in range(len(asvs))
         ]
         ids = []
         for asvs_minus_j in asvs_minus_j_list:
@@ -220,7 +220,7 @@ class TestRewards(unittest.TestCase):
 
         """Difference rewards for AUVs"""
         # Remove auv i
-        auvs_minus_i_list = [rewards.remove_agent(auvs, auv_ind) for auv_ind in range(len(auvs))]
+        auvs_minus_i_list = [remove_agent(auvs, auv_ind) for auv_ind in range(len(auvs))]
         test_list = [[1,2], [0,2], [0,1]]
         correct = True
         for auvs_minus_i, test_ids in zip(auvs_minus_i_list, test_list):
@@ -248,7 +248,7 @@ class TestRewards(unittest.TestCase):
         # Remove auv 0 from each set we removed asv j's influence from
         auv_ind = 0
         auvs_minus_ij_list = [
-            rewards.remove_agent(auvs_minus_j, auv_ind) for auvs_minus_j in auvs_minus_j_list
+            remove_agent(auvs_minus_j, auv_ind) for auvs_minus_j in auvs_minus_j_list
         ]
 
         # Create counterfactuals manually to check if they match the automatically computed ones

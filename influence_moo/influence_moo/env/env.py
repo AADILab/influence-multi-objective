@@ -64,18 +64,6 @@ class ASV():
         self.crashed = False
         self.path = [deepcopy(self.position)]
 
-    def get_observation(self):
-        # ASV has the same hypothesis about where AUVs are
-        observation = []
-        observation.append(self.position[0])
-        observation.append(self.position[1])
-        for auv in self.auvs:
-            observation.append(auv.position[0])
-            observation.append(auv.position[1])
-        observation = np.array(observation)
-        observation = np.concatenate([observation, self.connectivity_grid.flatten()])
-        return observation
-
     def policy(self, observation):
         # Output is vx, vy
         return self.policy_function(observation)
@@ -96,6 +84,9 @@ class AUVInfo():
         self.auv_ind = auv_ind
         self.distance = distance
         self.position = position
+
+def remove_agent(agents, agent_ind):
+    return agents[:agent_ind]+agents[agent_ind+1:]
 
 class Rewards():
     """Rewards are based on AUV/ASV paths and influence heuristics"""
@@ -251,10 +242,6 @@ class Rewards():
         """Compute indirect difference reward for ASV on one AUV"""
         pass
 
-    @staticmethod
-    def remove_agent(agents, agent_ind):
-        return agents[:agent_ind]+agents[agent_ind+1:]
-
     def compute(self, auvs, asvs):
         """
         influence_heuristic: line_of_sight, distance_threshold
@@ -283,7 +270,7 @@ class Rewards():
             influence_array = self.influence_array(auvs=auvs, asvs=asvs)
             # Copy asvs with asv j removed
             asvs_minus_j_list = [
-                self.remove_agent(asvs, asv_ind) for asv_ind in range(len(asvs))
+                remove_agent(asvs, asv_ind) for asv_ind in range(len(asvs))
             ]
             # Create counterfactual influence arrays when we remove each asv
             counterfactual_influence_list = [
@@ -314,7 +301,7 @@ class Rewards():
             auv_rewards = [self.local_auv_reward(auv) for auv in auvs]
         elif self.auv_reward == "difference":
             # Copy paths with auv i removed
-            auvs_minus_i_list = [self.remove_agent(auvs, auv_ind) for auv_ind in range(len(auvs))]
+            auvs_minus_i_list = [remove_agent(auvs, auv_ind) for auv_ind in range(len(auvs))]
             # Counterfactual G for each removed auv
             counterfactual_G_remove_i_list = [
                 self.global_(auvs=auvs_minus_i) for auvs_minus_i in auvs_minus_i_list
@@ -333,7 +320,7 @@ class Rewards():
                 decomposed_auv_rewards = []
                 for auv_ind in range(len(auvs)):
                     auvs_minus_ij_list = [
-                        self.remove_agent(auvs_minus_j, auv_ind) for auvs_minus_j in auvs_minus_j_list
+                        remove_agent(auvs_minus_j, auv_ind) for auvs_minus_j in auvs_minus_j_list
                     ]
                     counterfactual_G_ij_list = [
                         self.global_(auvs_minus_ij) for auvs_minus_ij in auvs_minus_ij_list
@@ -372,6 +359,20 @@ class OceanEnv():
         for poi_position, poi_config in zip(self.mission.pois, ec['pois']):
             self.pois.append(POI(position=poi_position, value=poi_config['value'], observation_radius=poi_config['observation_radius']))
         self.rewards = Rewards(self.pois, self.mission.connectivity_grid, self.collision_step_size)
+
+    def get_asv_observation(self, asv_ind):
+        # ASV has the same hypothesis about where AUVs are
+        observation = [self.asvs[asv_ind].position[0], self.asvs[asv_ind].position[1]]
+        other_asvs = remove_agent(self.asvs, asv_ind)
+        for asv in other_asvs:
+            observation.append(asv.position[0])
+            observation.append(asv.position[1])
+        for auv in self.auvs:
+            observation.append(auv.position[0])
+            observation.append(auv.position[1])
+        observation = np.array(observation)
+        observation = np.concatenate([observation, self.connectivity_grid.flatten()])
+        return observation
 
     def step(self):
         # Ping auvs
