@@ -361,15 +361,16 @@ class OceanEnv():
         self.rewards = Rewards(self.pois, self.mission.connectivity_grid, self.collision_step_size)
 
     def get_asv_observation(self, asv_ind):
-        # ASV has the same hypothesis about where AUVs are
+        # ASV has access to some but NOT ALL global state information
         observation = [self.asvs[asv_ind].position[0], self.asvs[asv_ind].position[1]]
         other_asvs = remove_agent(self.asvs, asv_ind)
         for asv in other_asvs:
             observation.append(asv.position[0])
             observation.append(asv.position[1])
         for auv in self.auvs:
-            observation.append(auv.position[0])
-            observation.append(auv.position[1])
+            # ASV has the same hypothesis about where AUVs are
+            observation.append(auv.h_position[0])
+            observation.append(auv.h_position[1])
         observation = np.array(observation)
         observation = np.concatenate([observation, self.connectivity_grid.flatten()])
         return observation
