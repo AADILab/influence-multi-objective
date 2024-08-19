@@ -1,7 +1,6 @@
 from copy import deepcopy
 import numpy as np
 from pathlib import Path
-from influence_moo.evo.network import NN
 from influence_moo.utils import out_of_bounds, determine_collision, line_of_sight
 from influence_moo.env.mission import Mission
 
@@ -19,6 +18,7 @@ class AUV():
         self.h_path = [deepcopy(self.h_position)]
         self.surface_history = [self.surfaced]
         self.crash_history = [self.crashed]
+        self.action_history = []
 
     def update(self, dt):
         # Am I at my target?
@@ -50,10 +50,8 @@ class AUV():
                 # I can use my GPS and no longer have uncertainty about my position
                 self.h_position = self.position
 
-        self.path.append(deepcopy(self.position))
-        self.h_path.append(deepcopy(self.h_position))
-        self.surface_history.append(self.surfaced)
-        self.crash_history.append(self.crashed)
+        # Return the action the auv took
+        return delta
 
 class ASV():
     def __init__(self, position, auvs, connectivity_grid, policy_function):
@@ -63,6 +61,9 @@ class ASV():
         self.policy_function = policy_function
         self.crashed = False
         self.path = [deepcopy(self.position)]
+        self.action_history = []
+        self.observation_history = []
+        self.crash_history = []
 
     def policy(self, observation):
         # Output is vx, vy
@@ -90,9 +91,7 @@ def remove_agent(agents, agent_ind):
 
 class Rewards():
     """Rewards are based on AUV/ASV paths and influence heuristics"""
-    def __init__(self, pois, connectivity_grid, collision_step_size, \
-            influence_heuristic, influence_type, auv_reward, asv_reward, \
-            multi_reward, distance_threshold
+    def __init__(self, pois, connectivity_grid, collision_step_size, config
         ):
         """
         TODO: Counterfactual influence vs local influence
@@ -105,11 +104,13 @@ class Rewards():
         self.pois = pois
         self.connectivity_grid = connectivity_grid
         self.collision_step_size = collision_step_size
-        self.influence_heuristic = influence_heuristic
-        self.influence_type = influence_type
-        self.auv_reward = auv_reward
-        self.asv_reward = asv_reward
-        self.multi_reward = multi_reward
+
+        self.influence_heuristic = config['rewards']['influence_heuristic']
+        self.influence_type = config['rewards']['influence_type']
+        self.auv_reward = config['rewards']['auv_reward']
+        self.asv_reward = config['rewards']['asv_reward']
+        self.multi_reward = config['rewards']['multi_reward']
+        self.distance_threshold = config['rewards']['distance_threshold']
 
     def local_auv_reward(self, auv):
         # No reward for crashing
@@ -344,7 +345,7 @@ class Rewards():
 
 class OceanEnv():
     def __init__(self, config):
-        mission_dir = Path(config["root_dir"]) / "missions" / config["env"]["mission"]
+        mission_dir = Path(config["env"]["mission_dir"])
         self.mission = Mission(mission_dir)
 
         self.config = config
@@ -358,7 +359,7 @@ class OceanEnv():
         self.pois = []
         for poi_position, poi_config in zip(self.mission.pois, ec['pois']):
             self.pois.append(POI(position=poi_position, value=poi_config['value'], observation_radius=poi_config['observation_radius']))
-        self.rewards = Rewards(self.pois, self.mission.connectivity_grid, self.collision_step_size)
+        self.rewards = Rewards(self.pois, self.mission.connectivity_grid, self.collision_step_size, self.config)
 
     def get_asv_observation(self, asv_ind):
         # ASV has access to some but NOT ALL global state information
@@ -372,7 +373,7 @@ class OceanEnv():
             observation.append(auv.h_position[0])
             observation.append(auv.h_position[1])
         observation = np.array(observation)
-        observation = np.concatenate([observation, self.connectivity_grid.flatten()])
+        observation = np.concatenate([observation, self.mission.connectivity_grid.flatten()])
         return observation
 
     def step(self):
@@ -381,9 +382,13 @@ class OceanEnv():
             asv.ping()
 
         # Move asvs first
-        for asv in self.asvs:
+        for asv_ind, asv in enumerate(self.asvs):
+            # Placeholder action
+            asv_velocity = np.array([0.,0.])
+            asv_observation = np.zeros(2*len(self.asvs)+2*len(self.auvs)+self.mission.connectivity_grid.size)
             if not asv.crashed:
-                asv_velocity = asv.policy(asv.get_observation())
+                asv_observation = self.get_asv_observation(asv_ind)
+                asv_velocity = asv.policy(asv_observation)
                 new_position = asv.position + asv_velocity*self.dt
                 if not out_of_bounds(new_position, self.mission.connectivity_grid.shape[0], self.mission.connectivity_grid.shape[1]):
                     asv.position += asv_velocity*self.dt
@@ -392,9 +397,14 @@ class OceanEnv():
                 asv.crashed = True
 
             asv.path.append(deepcopy(asv.position))
+            asv.action_history.append(asv_velocity)
+            asv.observation_history.append(asv_observation)
+            asv.crash_history.append(asv.crashed)
 
         # Move auvs
         for auv in self.auvs:
+            # Placeholder action
+            auv_action = np.array([0.,0.])
             # Wave moves auv
             if not auv.crashed:
                 auv.position += np.array([ self.mission.wave_x(auv.position[0])*self.dt, self.mission.wave_y(auv.position[1])*self.dt ])
@@ -402,14 +412,19 @@ class OceanEnv():
                 auv.crashed = True
             # auv acts based on hypothesis position
             if not auv.crashed:
-                auv.update(self.dt)
+                auv_action = auv.update(self.dt)
             if determine_collision(auv.position, self.mission.connectivity_grid):
                 auv.crashed = True
 
+            auv.path.append(deepcopy(auv.position))
+            auv.h_path.append(deepcopy(auv.h_position))
+            auv.action_history.append(auv_action)
+            auv.surface_history.append(auv.surfaced)
+            auv.crash_history.append(auv.crashed)
+
     def run(self, asv_policy_functions):
         # Let's give it a try
-        paths = [self.mission.pathA, self.mission.pathB, self.mission.pathC, self.mission.pathD]
-        self.auvs = [AUV(path, 1.) for path in paths]
+        self.auvs = [AUV(path, 1.) for path in self.mission.paths]
 
         self.asvs = [
             ASV(

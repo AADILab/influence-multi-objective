@@ -111,17 +111,23 @@ class TestRewards(unittest.TestCase):
         spoof_0 = self.get_spoof_0()
         pois, auvs, asvs, connectivity_grid, collision_step_size = \
             spoof_0.pois, spoof_0.auvs, spoof_0.asvs, spoof_0.connectivity_grid, spoof_0.collision_step_size
+        config = {
+            "rewards":
+            {
+                "influence_heuristic": "line_of_sight",
+                "influence_type": "granular",
+                "auv_reward": "difference",
+                "asv_reward": "indirect_difference_auv",
+                "multi_reward": "multiple",
+                "distance_threshold": 0.0
+            }
+        }
 
         rewards = Rewards(
             pois = pois,
             connectivity_grid = connectivity_grid,
             collision_step_size = collision_step_size,
-            influence_heuristic = "line_of_sight",
-            influence_type = "granular",
-            auv_reward = "difference",
-            asv_reward = "indirect_difference_auv",
-            multi_reward = "multiple",
-            distance_threshold = None
+            config = config
         )
 
         # Global reward
@@ -320,17 +326,23 @@ class TestRewards(unittest.TestCase):
         spoof_0 = self.get_spoof_0()
         pois, auvs, asvs, connectivity_grid, collision_step_size = \
             spoof_0.pois, spoof_0.auvs, spoof_0.asvs, spoof_0.connectivity_grid, spoof_0.collision_step_size
+        config = {
+            "rewards":
+            {
+                "influence_heuristic": "line_of_sight",
+                "influence_type": "granular",
+                "auv_reward": "difference",
+                "asv_reward": "indirect_difference_auv",
+                "multi_reward": "single",
+                "distance_threshold": 0.0
+            }
+        }
 
         rewards = Rewards(
             pois = pois,
             connectivity_grid = connectivity_grid,
             collision_step_size = collision_step_size,
-            influence_heuristic = "line_of_sight",
-            influence_type = "granular",
-            auv_reward = "difference",
-            asv_reward = "indirect_difference_auv",
-            multi_reward = "single",
-            distance_threshold = None
+            config = config
         )
 
         expected_out = [0.3, 1.2]
@@ -345,20 +357,24 @@ class TestRewards(unittest.TestCase):
         spoof_0 = self.get_spoof_0()
         pois, auvs, asvs, connectivity_grid, collision_step_size = \
             spoof_0.pois, spoof_0.auvs, spoof_0.asvs, spoof_0.connectivity_grid, spoof_0.collision_step_size
+        config = {
+            "rewards":
+            {
+                "influence_heuristic": "line_of_sight",
+                "influence_type": "granular",
+                "auv_reward": "difference",
+                "asv_reward": "indirect_difference_auv",
+                "multi_reward": "single",
+                "distance_threshold": 0.0
+            }
+        }
 
         rewards = Rewards(
             pois = pois,
             connectivity_grid = connectivity_grid,
             collision_step_size = collision_step_size,
-            influence_heuristic = "line_of_sight",
-            influence_type = "all_or_nothing",
-            auv_reward = "difference",
-            asv_reward = "indirect_difference_team",
-            multi_reward = "single",
-            distance_threshold = None
+            config = config
         )
-
-        print(rewards.compute(auvs, asvs))
 
 
 if __name__ == '__main__':

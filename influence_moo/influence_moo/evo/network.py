@@ -1,9 +1,9 @@
-from typing import List, Union, Tuple
+from typing import Union, List
 import numpy as np
 
-class NN:
+# Neural network class for evaluation
+class NeuralNetwork:
     def __init__(self, num_inputs: int, num_hidden: Union[int, List[int]], num_outputs: int) -> None:
-        self.mean, self.std_dev = 0.0, 1.0
         if type(num_hidden) == int:
             num_hidden = [num_hidden]
         self.num_inputs, self.num_hidden, self.num_outputs = num_inputs, num_hidden, num_outputs
@@ -11,14 +11,19 @@ class NN:
         self.shape = tuple([self.num_inputs] + self.num_hidden + [self.num_outputs])
         # Number of layers
         self.num_layers = len(self.shape) - 1
-        self.weights = self.randomWeights()
-        self.weights_shape = calculateWeightShape(self.weights)
-        self.total_weights = calculateWeightSize(self.weights)
+        # Initialize weights with zeros
+        self.weights = self.initWeights()
+        # Store shape and size for later
+        self.num_weights = self.calculateNumWeights()
 
-    def randomWeights(self) -> List[np.ndarray]:
+    def shape(self):
+        return (self.num_inputs, self.num_hidden, self.num_outputs)
+
+    def initWeights(self) -> List[np.ndarray]:
+        """Creates the numpy arrays for holding weights. Initialized to zeros """
         weights = []
         for num_inputs, num_outputs in zip(self.shape[:-1], self.shape[1:]):
-            weights.append(np.random.normal(self.mean, self.std_dev, size=(num_inputs + 1, num_outputs)))
+            weights.append(np.zeros(shape=(num_inputs+1, num_outputs)))
         return weights
 
     def forward(self, X: np.ndarray) -> np.ndarray:
@@ -36,51 +41,33 @@ class NN:
             a = self.activation(f)
         return a
 
-    def getWeights(self) -> List[np.ndarray]:
-        return self.weights.copy()
+    def setWeights(self, list_of_weights: List[float])->None:
+        """Take a list of weights and set the
+        neural network weights according to these weights"""
+        # Check the size
+        if len(list_of_weights) != self.num_weights:
+            raise Exception("Weights are being set incorrectly in setWeights().\n"\
+                            "The number of weights in the list is not the same as\n"\
+                            "the number of weights in the network\n"\
+                            +str(len(list_of_weights))+"!="+str(self.num_weights))
+        list_ind = 0
+        for layer in self.weights:
+            for row in layer:
+                for element_ind in range(row.size):
+                    row[element_ind] = list_of_weights[list_ind]
+                    list_ind+=1
 
-    def setWeights(self, weights: List[np.ndarray]):
-        # Check dimensions
-        dimensions_incorrect = []
-        for new_layer, old_layer in zip(weights, self.weights):
-            dimensions_incorrect.append(new_layer.shape != old_layer.shape)
-        if any(dimensions_incorrect):
-            raise Exception("Weights are being set incorrectly in setWeights().\n" \
-                            "Dimensions for new weights and network weights do not match!\n" \
-                            "New weights dim != Network weights dim\n" \
-                            + str([w.shape for w in weights]) + " != " + str([w.shape for w in self.weights]))
-        # Set weights
-        self.weights = weights
-        return None
+    def getWeights(self) -> List[float]:
+        """Get the weights as a list"""
+        weight_list = []
+        for layer in self.weights:
+            for row in layer:
+                for element in row:
+                    weight_list.append(element)
+        return weight_list
 
     def activation(self, arr: np.ndarray) -> np.ndarray:
         return np.tanh(arr)
 
-    def shape(self):
-        return (self.num_inputs, self.num_hidden, self.num_outputs)
-
-
-def createNNfromWeights(weights: List[np.ndarray]):
-    weight_shape = calculateWeightShape(weights)
-    num_inputs = weight_shape[0][0] - 1
-    num_hidden = [d[0] - 1 for d in weight_shape[1:]]
-    num_outputs = weight_shape[-1][1]
-    net = NN(num_inputs, num_hidden, num_outputs)
-    net.setWeights(weights)
-    return net
-
-
-def calculateWeightShape(weights: List[np.ndarray]) -> Tuple[Tuple[int]]:
-    return tuple([w.shape for w in weights])
-
-
-def calculateWeightSize(weights: List[np.ndarray]) -> Tuple[Tuple[int]]:
-    return sum([w.size for w in weights])
-
-
-if __name__ == "__main__":
-    # 4 inputs, 10 hidden, 2 outputs
-    # Weights should be shape (5, 10), (11, 2)
-    nn = NN(num_inputs=4, num_hidden=10, num_outputs=2)
-    Y = nn.forward(np.array([1, 2, 3, 4]))
-    print(Y)
+    def calculateNumWeights(self) -> int:
+        return sum([w.size for w in self.weights])
