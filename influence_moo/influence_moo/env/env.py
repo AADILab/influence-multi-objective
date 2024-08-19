@@ -1,3 +1,4 @@
+import os
 from copy import deepcopy
 import numpy as np
 from pathlib import Path
@@ -345,7 +346,7 @@ class Rewards():
 
 class OceanEnv():
     def __init__(self, config):
-        mission_dir = Path(config["env"]["mission_dir"])
+        mission_dir = Path(os.path.expanduser(Path(config["env"]["mission_dir"])))
         self.mission = Mission(mission_dir)
 
         self.config = config
