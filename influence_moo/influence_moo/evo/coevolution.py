@@ -115,7 +115,7 @@ class CooperativeCoevolutionaryAlgorithm():
         return tools.initRepeat(list, self.generateAsvIndividual, n=self.config["ccea"]["subpopulation_size"])
 
     def generateUAVSubpopulation(self):
-        return tools.initRepeat(list, self.generateUAVIndividual, n=self.config["ccea"]["population"]["subpopulation_size"])
+        return tools.initRepeat(list, self.generateUAVIndividual, n=self.config["ccea"]["subpopulation_size"])
 
     def population(self):
         return tools.initRepeat(list, self.generateAsvSubpopulation, n=self.num_asvs)
@@ -340,9 +340,9 @@ class CooperativeCoevolutionaryAlgorithm():
                 for i in range(self.num_auvs):
                     header += "auv_"+str(i)+"_hx,auv_"+str(i)+"_hy,"
                 for i in range(self.num_asvs):
-                    header += "asv_"+str(i)+"_x,asv_"+str(i)+"_y"
+                    header += "asv_"+str(i)+"_x,asv_"+str(i)+"_y,"
                 for i in range(self.num_pois):
-                    header += "poi_"+str(i)+"_x,poi_"+str(i)+"_y"
+                    header += "poi_"+str(i)+"_x,poi_"+str(i)+"_y,"
                 # NO Observations. Observations are just a reorganized subset of states
                 # Actions
                 for i in range(self.num_auvs):
