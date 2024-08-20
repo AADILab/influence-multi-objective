@@ -403,82 +403,88 @@ class CooperativeCoevolutionaryAlgorithm():
                     # Write it out
                     file.write(csv_line)
 
-    def run(self):
-        for num_trial in range(self.config["experiment"]["num_trials"]):
-            # Init gen counter
-            self.gen = 0
+    def runTrial(self, num_trial):
+        # Init gen counter
+        self.gen = 0
 
-            # Create directory for saving data
-            trial_dir = self.trials_dir / ("trial_"+str(num_trial))
-            if not os.path.isdir(trial_dir):
-                os.makedirs(trial_dir)
+        # Create directory for saving data
+        trial_dir = self.trials_dir / ("trial_"+str(num_trial))
+        if not os.path.isdir(trial_dir):
+            os.makedirs(trial_dir)
 
-            # Create csv file for saving evaluation fitnesses
-            self.createEvalFitnessCSV(trial_dir)
+        # Create csv file for saving evaluation fitnesses
+        self.createEvalFitnessCSV(trial_dir)
 
-            # Initialize the population
-            pop = self.population()
+        # Initialize the population
+        pop = self.population()
 
-            # Create the teams
-            teams = self.formTeams(pop)
+        # Create the teams
+        teams = self.formTeams(pop)
 
-            # Evaluate the teams
+        # Evaluate the teams
+        eval_infos = self.evaluateTeams(teams)
+
+        # Assign fitnesses to individuals
+        self.assignFitnesses(teams, eval_infos)
+
+        # Evaluate a team with the best indivdiual from each subpopulation
+        eval_infos = self.evaluateEvaluationTeam(pop)
+
+        # Save fitnesses of the evaluation team
+        self.writeEvalFitnessCSV(trial_dir, eval_infos)
+
+        # Save trajectories of evaluation team
+        if self.save_trajectories:
+            self.writeEvalTrajs(trial_dir, eval_infos)
+
+        for gen in tqdm(range(self.config["ccea"]["num_generations"])):
+            # Update gen counter
+            self.gen = gen+1
+
+            # Perform selection
+            offspring = self.select(pop)
+
+            # Perform mutation
+            self.mutate(offspring)
+
+            # Shuffle subpopulations in offspring
+            # to make teams random
+            self.shuffle(offspring)
+
+            # Form teams for evaluation
+            teams = self.formTeams(offspring)
+
+            # Evaluate each team
             eval_infos = self.evaluateTeams(teams)
 
-            # Assign fitnesses to individuals
+            # Now assign fitnesses to each individual
             self.assignFitnesses(teams, eval_infos)
 
             # Evaluate a team with the best indivdiual from each subpopulation
-            eval_infos = self.evaluateEvaluationTeam(pop)
+            eval_infos = self.evaluateEvaluationTeam(offspring)
 
-            # Save fitnesses of the evaluation team
+            # Save fitnesses
             self.writeEvalFitnessCSV(trial_dir, eval_infos)
 
-            # Save trajectories of evaluation team
-            if self.save_trajectories:
+            # Save trajectories
+            if self.save_trajectories and self.gen % self.num_gens_between_save_traj == 0:
                 self.writeEvalTrajs(trial_dir, eval_infos)
 
-            for gen in tqdm(range(self.config["ccea"]["num_generations"])):
-                # Update gen counter
-                self.gen = gen+1
+            # Now populate the population with individuals from the offspring
+            self.setPopulation(pop, offspring)
 
-                # Perform selection
-                offspring = self.select(pop)
-
-                # Perform mutation
-                self.mutate(offspring)
-
-                # Shuffle subpopulations in offspring
-                # to make teams random
-                self.shuffle(offspring)
-
-                # Form teams for evaluation
-                teams = self.formTeams(offspring)
-
-                # Evaluate each team
-                eval_infos = self.evaluateTeams(teams)
-
-                # Now assign fitnesses to each individual
-                self.assignFitnesses(teams, eval_infos)
-
-                # Evaluate a team with the best indivdiual from each subpopulation
-                eval_infos = self.evaluateEvaluationTeam(offspring)
-
-                # Save fitnesses
-                self.writeEvalFitnessCSV(trial_dir, eval_infos)
-
-                # Save trajectories
-                if self.save_trajectories and self.gen % self.num_gens_between_save_traj == 0:
-                    self.writeEvalTrajs(trial_dir, eval_infos)
-
-                # Now populate the population with individuals from the offspring
-                self.setPopulation(pop, offspring)
+    def run(self, num_trial):
+        if num_trial is None:
+            # Run all trials if no number is specified
+            for num_trial in range(self.config["experiment"]["num_trials"]):
+                self.runTrial(num_trial)
+        else:
+            # Run only the trial specified
+            self.runTrial(num_trial)
 
         if self.use_multiprocessing:
             self.pool.close()
 
-        return pop
-
-def runCCEA(config_dir):
+def runCCEA(config_dir, num_trial=None):
     ccea = CooperativeCoevolutionaryAlgorithm(config_dir)
-    return ccea.run()
+    return ccea.run(num_trial)
