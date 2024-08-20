@@ -1,4 +1,3 @@
-
 #!/bin/bash
 #SBATCH --time=7-00:00:00
 #SBATCH --constraint=skylake
