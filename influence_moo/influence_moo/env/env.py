@@ -145,22 +145,24 @@ class Rewards():
 
         # Go through paths and determine which auv was closest to each poi
         for auv_ind, auv in enumerate(auvs):
-            # This auv only counts if it didn't crash
-            if not auv.crashed:
-                for auv_position in auv.path:
-                    for poi_ind, poi in enumerate(self.pois):
-                        # Make sure auv was not counterfactually removed
-                        if not np.isnan(auv_position[0]) and not np.isnan(auv_position[1]):
-                            # Check line of sight
-                            if line_of_sight(auv_position, poi.position, self.connectivity_grid, self.collision_step_size):
-                                distance = np.linalg.norm(auv_position - poi.position)
-                                if distance < nearest_auvs[poi_ind].distance:
-                                    nearest_auvs[poi_ind] = AUVInfo(auv_ind=auv_ind, distance = distance, position = deepcopy(auv_position))
+            for auv_position in auv.path:
+                for poi_ind, poi in enumerate(self.pois):
+                    # Make sure auv was not counterfactually removed
+                    if not np.isnan(auv_position[0]) and not np.isnan(auv_position[1]):
+                        # Check line of sight
+                        if line_of_sight(auv_position, poi.position, self.connectivity_grid, self.collision_step_size):
+                            distance = np.linalg.norm(auv_position - poi.position)
+                            if distance < nearest_auvs[poi_ind].distance:
+                                nearest_auvs[poi_ind] = AUVInfo(auv_ind=auv_ind, distance = distance, position = deepcopy(auv_position))
 
         return nearest_auvs
 
-    def global_(self, auvs):
+    def global_(self, auvs, asvs):
         """Global reward for entire team"""
+        # Reward is zero if anyone crashed
+        if any([auv.crashed for auv in auvs]+[asv.crashed for asv in asvs]):
+            return 0.0
+
         # We need to go through the paths and determine which auv was closest to each poi
         nearest_auvs = self.get_nearest_auvs(auvs)
 
@@ -253,7 +255,7 @@ class Rewards():
         multi_reward: single, multiple
         """
         # Compute global reward
-        G = self.global_(auvs=auvs)
+        G = self.global_(auvs=auvs, asvs=asvs)
 
         # Global reward for ASVs
         if self.asv_reward == "global":
@@ -288,7 +290,7 @@ class Rewards():
             ]
             # Compute counterfactual G with the influence of asv j removed
             counterfactual_G_j_list = [
-                self.global_(auvs_minus_j) for auvs_minus_j in auvs_minus_j_list
+                self.global_(auvs_minus_j, asvs_minus_j) for auvs_minus_j, asvs_minus_j in zip(auvs_minus_j_list, asvs_minus_j_list)
             ]
             if self.asv_reward == "indirect_difference_team":
                 # Finally compute an indirect difference reward with these counterfactual paths
@@ -306,7 +308,7 @@ class Rewards():
             auvs_minus_i_list = [remove_agent(auvs, auv_ind) for auv_ind in range(len(auvs))]
             # Counterfactual G for each removed auv
             counterfactual_G_remove_i_list = [
-                self.global_(auvs=auvs_minus_i) for auvs_minus_i in auvs_minus_i_list
+                self.global_(auvs=auvs_minus_i, asvs=asvs) for auvs_minus_i in auvs_minus_i_list
             ]
             # Compute D for each auv
             auv_rewards = [
@@ -325,7 +327,7 @@ class Rewards():
                         remove_agent(auvs_minus_j, auv_ind) for auvs_minus_j in auvs_minus_j_list
                     ]
                     counterfactual_G_ij_list = [
-                        self.global_(auvs_minus_ij) for auvs_minus_ij in auvs_minus_ij_list
+                        self.global_(auvs_minus_ij, asvs_minus_j) for auvs_minus_ij, asvs_minus_j in zip(auvs_minus_ij_list, asvs_minus_j_list)
                     ]
                     difference_ij_list = [
                         G_j - G_ij for G_j, G_ij in zip(counterfactual_G_j_list, counterfactual_G_ij_list)
@@ -364,6 +366,13 @@ class OceanEnv():
 
     def get_asv_observation(self, asv_ind):
         # ASV has access to some but NOT ALL global state information
+        """
+        Note for development: Agent centric observations
+        observations are like delta x's to other agents (more informative)
+        cares about how far things are from itself (most likely)
+        map information - raycast in 8 directions that probe how far a wall is (like a lidar)
+        and that gives a lower dimensional representation but still a useful one
+        """
         observation = [self.asvs[asv_ind].position[0], self.asvs[asv_ind].position[1]]
         other_asvs = remove_agent(self.asvs, asv_ind)
         for asv in other_asvs:
@@ -374,13 +383,13 @@ class OceanEnv():
             observation.append(auv.h_position[0])
             observation.append(auv.h_position[1])
         observation = np.array(observation)
-        observation = np.concatenate([observation, self.mission.connectivity_grid.flatten()])
         return observation
 
     def step(self):
         # Ping auvs
         for asv in self.asvs:
-            asv.ping()
+            if not asv.crashed:
+                asv.ping()
 
         # Move asvs first
         for asv_ind, asv in enumerate(self.asvs):
@@ -390,11 +399,10 @@ class OceanEnv():
             if not asv.crashed:
                 asv_observation = self.get_asv_observation(asv_ind)
                 asv_velocity = asv.policy(asv_observation)
-                new_position = asv.position + asv_velocity*self.dt
-                if not out_of_bounds(new_position, self.mission.connectivity_grid.shape[0], self.mission.connectivity_grid.shape[1]):
-                    asv.position += asv_velocity*self.dt
+                asv.position += asv_velocity*self.dt
 
-            if determine_collision(asv.position, self.mission.connectivity_grid):
+            if out_of_bounds(asv.position, self.mission.connectivity_grid.shape[0], self.mission.connectivity_grid.shape[1]) \
+                or determine_collision(asv.position, self.mission.connectivity_grid):
                 asv.crashed = True
 
             asv.path.append(deepcopy(asv.position))
@@ -409,12 +417,14 @@ class OceanEnv():
             # Wave moves auv
             if not auv.crashed:
                 auv.position += np.array([ self.mission.wave_x(auv.position[0])*self.dt, self.mission.wave_y(auv.position[1])*self.dt ])
-            if determine_collision(auv.position, self.mission.connectivity_grid):
+            if out_of_bounds(auv.position, self.mission.connectivity_grid.shape[0], self.mission.connectivity_grid.shape[1]) \
+                or determine_collision(auv.position, self.mission.connectivity_grid):
                 auv.crashed = True
             # auv acts based on hypothesis position
             if not auv.crashed:
                 auv_action = auv.update(self.dt)
-            if determine_collision(auv.position, self.mission.connectivity_grid):
+            if out_of_bounds(auv.position, self.mission.connectivity_grid.shape[0], self.mission.connectivity_grid.shape[1]) \
+                or determine_collision(auv.position, self.mission.connectivity_grid):
                 auv.crashed = True
 
             auv.path.append(deepcopy(auv.position))

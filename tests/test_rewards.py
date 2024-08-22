@@ -98,6 +98,75 @@ class TestRewards(unittest.TestCase):
 
         self.spoof_0 = Spoof(pois, auvs, asvs, connectivity_grid, collision_step_size=0.1)
 
+    def setup_spoof_1(self):
+        """This rollout tests if an AUV crashes"""
+        connectivity_grid = np.ones((20, 10))
+        connectivity_grid[10,:] = 0.0
+        connectivity_grid[5,2:8] = 0.0
+        connectivity_grid[10:,3] = 0.0
+
+        pois = [
+            POI(position=np.array([1,9]), value=0.3, observation_radius=1.0),
+            POI(position=np.array([1,1]), value=2.5, observation_radius=1.0),
+            POI(position=np.array([16,8]), value=1.2, observation_radius = 1.0),
+            POI(position=np.array([19,2]), value=3.7, observation_radius = 1.0)
+        ]
+        poi_positions = np.array([poi.position for poi in pois])
+
+        auvs = [
+            AUV(targets=[None], max_velocity=None),
+            AUV(targets=[None], max_velocity=None),
+            AUV(targets=[None], max_velocity=None)
+        ]
+
+        # For tracking auvs during testing
+        for id, auv in enumerate(auvs):
+            auv.id = id
+
+        auv0_xs = np.linspace(1.,1.,100)
+        auv0_ys = np.linspace(1.,9.,100)
+        auvs[0].path = np.array([auv0_xs, auv0_ys]).T
+
+        auv1_xs = np.linspace(12.,19.,100)
+        auv1_ys = np.linspace(1.,2.,100)
+        auvs[1].path = np.array([auv1_xs, auv1_ys]).T
+
+        auv2_xs = np.linspace(12.,16.,100)
+        auv2_ys = np.linspace(5.,8.,100)
+        auvs[2].path = np.array([auv2_xs, auv2_ys]).T
+
+        asvs = [
+            ASV(position=None, auvs=auvs, connectivity_grid=None, policy_function=None),
+            ASV(position=None, auvs=auvs, connectivity_grid=None, policy_function=None)
+        ]
+
+        # For tracking these asvs during testing
+        for id, asv in enumerate(asvs):
+            asv.id = id
+
+        asv0_xs = np.linspace(8.,8.,100)
+        asv0_ys = np.linspace(8.,8.,100)
+        asvs[0].path = np.array([asv0_xs, asv0_ys]).T
+
+        asv1_xs = np.linspace(13,13,100)
+        asv1_ys = np.linspace(8,8,100)
+        asvs[1].path = np.array([asv1_xs, asv1_ys]).T
+
+        if self.VISUALIZE:
+            fig, ax = plt.subplots(1,1,dpi=100)
+            plot_grid(connectivity_grid, cmap='tab10_r')
+            plot_pts(poi_positions, ax, marker='o', fillstyle='none', linestyle='none',color='tab:green')
+            plot_pts(auvs[0].path, ax, ls=(0, (1,2)), color='pink', lw=1)
+            plot_pts(auvs[1].path, ax, ls='dashed', color='purple', lw=1)
+            plot_pts(auvs[2].path, ax, ls='dashdot', color='tab:cyan', lw=1)
+            plot_pts(asvs[0].path, ax, marker='+', color='orange')
+            plot_pts(asvs[1].path, ax, marker='+', color='tab:cyan')
+            plot_pts(np.array([auvs[0].path[87]]), ax, marker='x', color='pink')
+            ax.set_title("Rollout for Testing Rewards")
+            plt.show()
+
+        self.spoof_0 = Spoof(pois, auvs, asvs, connectivity_grid, collision_step_size=0.1)
+
     def get_spoof_0(self):
         if not "spoof_0" in self.__dict__:
             self.setup_spoof_0()

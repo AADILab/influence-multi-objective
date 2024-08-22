@@ -95,8 +95,7 @@ class CooperativeCoevolutionaryAlgorithm():
     def generateTemplateNeuralNetwork(self, num_hidden):
         agent_nn = NeuralNetwork(
             num_inputs=2*self.num_asvs+\
-                2*len(self.clean_env.mission.paths)+\
-                self.clean_env.mission.connectivity_grid.size,
+                2*len(self.clean_env.mission.paths),
             num_hidden=num_hidden,
             num_outputs=2
         )

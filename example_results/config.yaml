@@ -38,11 +38,15 @@ env:
     - {value: 1.0, observation_radius: 5.0}
     - {value: 1.0, observation_radius: 5.0}
 ccea:
-  num_generations: 1000
+  mutation:
+    mean: 0.0
+    std_deviation: 1.0
+    independent_probability: 0.5
+  num_generations: 10000
   weight_initialization:
     lower_bound: 0.0
     upper_bound: 1.0
-  subpopulation_size: 3
+  subpopulation_size: 50
   selection:
     n_elites_binary_tournament:
       n_elites: 5
@@ -51,8 +55,8 @@ ccea:
     multi_evaluation:
       num_evaluations_per_team: 1
 processing:
-  use_multiprocessing: False
-  num_threads: 10
+  use_multiprocessing: True
+  num_threads: 20
 data:
   save_trajectories:
     switch: True

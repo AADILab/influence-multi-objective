@@ -42,7 +42,7 @@ ccea:
   weight_initialization:
     lower_bound: 0.0
     upper_bound: 1.0
-  subpopulation_size: 3
+  subpopulation_size: 50
   selection:
     n_elites_binary_tournament:
       n_elites: 5
@@ -51,8 +51,8 @@ ccea:
     multi_evaluation:
       num_evaluations_per_team: 1
 processing:
-  use_multiprocessing: False
-  num_threads: 10
+  use_multiprocessing: True
+  num_threads: 1
 data:
   save_trajectories:
     switch: True
