@@ -32,7 +32,7 @@ class Mission():
         return self.x_a*np.sin(x/self.x_b + self.x_c)
 
     def wave_y(self, y):
-        return self.y_a*np.sin(y/self.y_b) + self.y_c
+        return self.y_a*np.sin(y/self.y_b + self.y_c)
 
     def load_waves(self, csv_dir):
         df = pd.read_csv(csv_dir)

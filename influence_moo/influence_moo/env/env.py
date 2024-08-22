@@ -72,7 +72,7 @@ class ASV():
 
     def ping(self):
         for auv in self.auvs:
-            if line_of_sight(self.position, auv.position, self.connectivity_grid, 0.1):
+            if not auv.crashed and line_of_sight(self.position, auv.position, self.connectivity_grid, 0.1):
                 auv.h_position = deepcopy(auv.position)
 
 class POI():
