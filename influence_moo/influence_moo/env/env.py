@@ -160,8 +160,8 @@ class Rewards():
     def global_(self, auvs, asvs):
         """Global reward for entire team"""
         # Reward is zero if anyone crashed
-        if any([auv.crashed for auv in auvs]+[asv.crashed for asv in asvs]):
-            return 0.0
+        # if any([auv.crashed for auv in auvs]+[asv.crashed for asv in asvs]):
+        #     return 0.0
 
         # We need to go through the paths and determine which auv was closest to each poi
         nearest_auvs = self.get_nearest_auvs(auvs)

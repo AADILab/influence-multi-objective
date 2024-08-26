@@ -28,12 +28,16 @@ def generate_steps(positionA, positionB, step_size):
 def determine_collision(pt, connectivity_grid):
     # Map pt to grid
     coord = pt.astype(int)
-    if connectivity_grid[coord[0], coord[1]] == 0:
-        # Yes collision
+    try:
+        if connectivity_grid[coord[0], coord[1]] == 0:
+            # Yes collision
+            return True
+        else:
+            # No collision
+            return False
+    except IndexError:
+        # Out of Bounds. Count as collision
         return True
-    else:
-        # No collision
-        return False
 
 def determine_collisions(pts, connectivity_grid):
     for pt in pts:
