@@ -25,7 +25,7 @@ class Mission():
         self.connect_dir = self.mission_dir / "connectivity.csv"
         self.poi_dir = self.mission_dir / "pois.csv"
         self.path_dirs = self.get_path_dirs(mission_dir)
-        self.root_node_dir = self.mission_dir / "root_node.csv"
+        self.asv_dir = self.mission_dir / "asv_start_positions.csv"
         self.wave_dir = self.mission_dir / "waves.csv"
 
     def wave_x(self, x):
@@ -60,13 +60,13 @@ class Mission():
         return df.to_numpy(float)[:,1:]
 
     @staticmethod
-    def load_root_note(root_node_dir):
-        df = pd.read_csv(root_node_dir)
+    def load_asv_start_positions(asv_dir):
+        df = pd.read_csv(asv_dir)
         return df.to_numpy(int)[:,1:]
 
     def load_mission(self):
         self.connectivity_grid = self.load_connectivity_grid(self.connect_dir)
         self.pois = self.load_pois(self.poi_dir)
         self.paths = [self.load_path(path_dir) for path_dir in self.path_dirs]
-        self.root_node = self.load_root_note(self.root_node_dir)
+        self.asv_start_positions = self.load_asv_start_positions(self.asv_dir)
         self.load_waves(self.wave_dir)
