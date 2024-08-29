@@ -44,12 +44,7 @@ class AUV():
             if self.target_id < len(self.targets)-1:
                 # New target
                 self.target_id += 1
-            # Otherwise, I have reached my last target, and it is time to surface
-            else:
-                self.surfaced = True
-                # Now that I have surfaced,
-                # I can use my GPS and no longer have uncertainty about my position
-                self.h_position = self.position
+            # Otherwise, I have reached my last target, and will stay there
 
         # Return the action the auv took
         return delta
@@ -157,22 +152,53 @@ class Rewards():
 
         return nearest_auvs
 
+    # def global_step_(self, auvs, asvs):
+
+    @staticmethod
+    def position_removed(position):
+        if np.isnan(position[0]) or np.isnan(position[1]):
+            return True
+        else:
+            return False
+
     def global_(self, auvs, asvs):
         """Global reward for entire team"""
-        # Reward is zero if anyone crashed
-        # if any([auv.crashed for auv in auvs]+[asv.crashed for asv in asvs]):
-        #     return 0.0
+        # Get path lengths
+        num_steps = len(auvs[0].path)
+        for agent in (auvs+asvs)[1:]:
+            if len(agent.path) != num_steps:
+                raise Exception("Agents have different length paths")
 
-        # We need to go through the paths and determine which auv was closest to each poi
-        nearest_auvs = self.get_nearest_auvs(auvs)
+        G_total = 0
+        for i in range(num_steps):
+            # Compute a step-wise reward
 
-        # Now let's compute the value of the observations
-        reward = 0
-        for poi, auv_info in zip(self.pois, nearest_auvs):
-            # Make sure this poi was observed
-            if auv_info.auv_ind is not None and auv_info.distance < poi.observation_radius:
-                reward += 1./np.max((auv_info.distance, 1.)) * poi.value
-        return reward
+            # Initialize storage for which auv was closest to each poi
+            nearest_auvs = [AUVInfo(auv_ind=None, distance=np.inf, position=None) for _ in self.pois]
+
+            # Now figure out which auv was closest
+            for auv_ind, auv in enumerate(auvs):
+                for poi_ind, poi in enumerate(self.pois):
+                    # Make sure auv was not counterfactually removed or crash
+                    if not self.position_removed(auv.path[i]) and not auv.crash_history[i]:
+                        # Check line of sight
+                        if line_of_sight(auv.path[i], poi.position, self.connectivity_grid, self.collision_step_size):
+                            # Update nearest AUV for this poi
+                            distance = np.linalg.norm(auv.path[i] - poi.position)
+                            if distance < nearest_auvs[poi_ind].distance:
+                                nearest_auvs[poi_ind] = AUVInfo(auv_ind=auv_ind, distance = distance, position = deepcopy(auv.path[i]))
+
+            # Compute the value of the observations
+            G_step = 0
+            for poi, auv_info in zip(self.pois, nearest_auvs):
+                # Make sure this POI was observed
+                if auv_info.auv_ind is not None and auv_info.distance < poi.observation_radius:
+                    G_step += 1./np.max((auv_info.distance, 1.)) * poi.value
+
+            # Add this step-wise reward to the trajectory reward
+            G_total += G_step
+
+        return G_total
 
     def difference(self, auvs, auv_ind, team_reward):
         """Difference reward for a single AUV"""
@@ -439,12 +465,12 @@ class OceanEnv():
 
         self.asvs = [
             ASV(
-                position=self.mission.root_node[0].astype(float),
+                position=start_position.astype(float),
                 auvs=self.auvs,
                 connectivity_grid=self.mission.connectivity_grid,
                 policy_function=policy_func
             )
-            for policy_func in asv_policy_functions
+            for start_position ,policy_func in zip(self.mission.asv_start_positions, asv_policy_functions)
         ]
 
         for _ in range(self.num_iterations):
