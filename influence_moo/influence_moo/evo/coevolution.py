@@ -37,6 +37,11 @@ class EvalInfo():
         self.rewards = rewards
         self.joint_trajectory = joint_trajectory
 
+class TeamInfo():
+    def __init__(self, individuals, ids):
+        self.individuals = individuals
+        self.ids = ids
+
 class CooperativeCoevolutionaryAlgorithm():
     def __init__(self, config_dir):
         self.config_dir = Path(os.path.expanduser(config_dir))
@@ -50,6 +55,7 @@ class CooperativeCoevolutionaryAlgorithm():
         self.include_elites_in_tournament = self.config["ccea"]["selection"]["n_elites_binary_tournament"]["include_elites_in_tournament"]
         self.num_mutants = self.subpopulation_size - self.n_elites
         self.num_rollouts_per_team = self.config["ccea"]["evaluation"]["multi_evaluation"]["num_rollouts_per_team"]
+        self.num_teams_per_evaluation = self.config["ccea"]["evaluation"]["multi_evaluation"]["num_teams_per_evaluation"]
 
         self.use_multiprocessing = self.config["processing"]["use_multiprocessing"]
         self.num_threads = self.config["processing"]["num_threads"]
@@ -104,7 +110,9 @@ class CooperativeCoevolutionaryAlgorithm():
         return random.uniform(self.config["ccea"]["weight_initialization"]["lower_bound"], self.config["ccea"]["weight_initialization"]["upper_bound"])
 
     def generateIndividual(self, individual_size):
-        return tools.initRepeat(creator.Individual, self.generateWeight, n=individual_size)
+        ind = tools.initRepeat(creator.Individual, self.generateWeight, n=individual_size)
+        ind.fitness_list = []
+        return ind
 
     def generateAsvIndividual(self):
         return self.generateIndividual(individual_size=self.nn_template.num_weights)
@@ -119,12 +127,14 @@ class CooperativeCoevolutionaryAlgorithm():
         return tools.initRepeat(list, self.generateAsvSubpopulation, n=self.num_asvs)
 
     def formEvaluationTeam(self, population):
-        eval_team = []
+        eval_team_individuals = []
+        inds = []
         for subpop in population:
             # Use max with a key function to get the individual with the highest fitness[0] value
             best_ind = max(subpop, key=lambda ind: ind.fitness.values[0])
-            eval_team.append(best_ind)
-        return eval_team
+            eval_team_individuals.append(best_ind)
+            inds.append(best_ind)
+        return TeamInfo(eval_team_individuals, inds)
 
     def evaluateEvaluationTeam(self, population):
         # Create evaluation team
@@ -133,28 +143,35 @@ class CooperativeCoevolutionaryAlgorithm():
         eval_teams = [eval_team for _ in range(self.num_rollouts_per_team)]
         return self.evaluateTeams(eval_teams)
 
-    def formTeams(self, population, inds=None):
+    def formTeams(self, population):
         # Start a list of teams
         teams = []
 
-        if inds is None:
-            team_inds = range(self.subpopulation_size)
-        else:
-            team_inds = inds
-
-        # For each individual in a subpopulation
-        for i in team_inds:
-            # Make a team
-            team = []
-            # For each subpopulation in the population
+        for _ in range(self.num_teams_per_evaluation):
+            # Generate shuffled ids for each subpopulation
+            pop_ids = []
             for subpop in population:
-                # Put the i'th indiviudal on the team
-                team.append(subpop[i])
-            # Need to save that team for however many evaluations
-            # we're doing per team
-            for _ in range(self.num_rollouts_per_team):
-                # Save that team
-                teams.append(team)
+                sub_ids = list(range(len(subpop)))
+                random.shuffle(sub_ids)
+                pop_ids.append(sub_ids)
+
+            # Iterate through the team ids in these shuffled ids
+            # Each set of ids in the same index makes a team
+            for t_ids in zip(*pop_ids):
+                team_ids = list(t_ids)
+                team_individuals = []
+                for id_, subpop in zip(team_ids, population):
+                    team_individuals.append(subpop[id_])
+
+                team = TeamInfo(
+                    individuals=team_individuals,
+                    ids=team_ids
+                )
+
+                # Duplicate a team for however many rollouts
+                # we'd like to do for one team
+                for _ in range(self.num_rollouts_per_team):
+                    teams.append(team)
 
         return teams
 
@@ -166,12 +183,12 @@ class CooperativeCoevolutionaryAlgorithm():
             eval_infos = list(self.map(self.evaluateTeam, teams))
         return eval_infos
 
-    def evaluateTeam(self, team, compute_team_fitness=True):
+    def evaluateTeam(self, team):
         # Set up networks
         asv_nns = [deepcopy(self.nn_template) for _ in range(self.num_asvs)]
 
         # Load in the weights
-        for asv_nn, individual in zip(asv_nns, team):
+        for asv_nn, individual in zip(asv_nns, team.individuals):
             asv_nn.setWeights(individual)
 
         asv_policy_functions = [asv_nn.forward for asv_nn in asv_nns]
@@ -230,41 +247,16 @@ class CooperativeCoevolutionaryAlgorithm():
             offspring.append(self.selectSubPopulation(subpop))
         return offspring
 
-    def shuffle(self, population):
-        for subpop in population:
-            random.shuffle(subpop)
-
     def assignFitnesses(self, teams, eval_infos):
-        # There may be several eval_infos for the same team
-        # This is the case if there are many evaluations per team
-        # In that case, we need to aggregate those many evaluations into one fitness
-        if self.num_rollouts_per_team == 1:
-            for team, eval_info in zip(teams, eval_infos):
-                fitnesses = eval_info.rewards
-                for individual, fit in zip(team, fitnesses):
-                    individual.fitness.values = fit
-        else:
-            team_list = []
-            eval_info_list = []
-            for team, eval_info in zip(teams, eval_infos):
-                team_list.append(team)
-                eval_info_list.append(eval_info)
+        for team, eval in zip(teams, eval_infos):
+            fitnesses = eval.rewards
+            for individual, fit in zip(team.individuals, fitnesses):
+                individual.fitness_list.append(fit)
 
-            for team_id, team in enumerate(team_list[::self.num_rollouts_per_team]):
-                # Get all the eval infos for this team
-                team_eval_infos = eval_info_list[team_id*self.num_rollouts_per_team:(team_id+1)*self.num_rollouts_per_team]
-                # Aggregate the fitnesses into a big numpy array
-                all_fitnesses = [eval_info.rewards for eval_info in team_eval_infos]
-                average_fitnesses = [0 for _ in range(len(all_fitnesses[0]))]
-                for fitnesses in all_fitnesses:
-                    for count, fit in enumerate(fitnesses):
-                        average_fitnesses[count] += fit[0]
-                for ind in range(len(average_fitnesses)):
-                    average_fitnesses[ind] = average_fitnesses[ind] / self.num_rollouts_per_team
-                # And now get that back to the individuals
-                fitnesses = tuple([(f,) for f in average_fitnesses])
-                for individual, fit in zip(team, fitnesses):
-                    individual.fitness.values = fit
+    def aggregateFitnesses(self, population):
+        for subpop in population:
+            for individual in subpop:
+                individual.fitness.values = tuple(np.average(np.array(individual.fitness_list), axis=0))
 
     def setPopulation(self, population, offspring):
         for subpop, subpop_offspring in zip(population, offspring):
@@ -425,6 +417,8 @@ class CooperativeCoevolutionaryAlgorithm():
         # Assign fitnesses to individuals
         self.assignFitnesses(teams, eval_infos)
 
+        self.aggregateFitnesses(pop)
+
         # Evaluate a team with the best indivdiual from each subpopulation
         eval_infos = self.evaluateEvaluationTeam(pop)
 
@@ -442,21 +436,23 @@ class CooperativeCoevolutionaryAlgorithm():
             # Perform selection
             offspring = self.select(pop)
 
-            # Perform mutation
-            self.mutate(offspring)
+            """Start multiple teams per evaluation"""
+            for _ in range(self.num_teams_per_evaluation):
+                # Perform mutation
+                self.mutate(offspring)
 
-            # Shuffle subpopulations in offspring
-            # to make teams random
-            self.shuffle(offspring)
+                # Form teams for evaluation
+                teams = self.formTeams(offspring)
 
-            # Form teams for evaluation
-            teams = self.formTeams(offspring)
+                # Evaluate each team
+                eval_infos = self.evaluateTeams(teams)
 
-            # Evaluate each team
-            eval_infos = self.evaluateTeams(teams)
+                # Now assign fitnesses to each individual
+                self.assignFitnesses(teams, eval_infos)
 
-            # Now assign fitnesses to each individual
-            self.assignFitnesses(teams, eval_infos)
+            # Now aggregate all of their assigned fitnesses
+            self.aggregateFitnesses(offspring)
+            '''End multiple teams per evaluation'''
 
             # Evaluate a team with the best indivdiual from each subpopulation
             eval_infos = self.evaluateEvaluationTeam(offspring)
