@@ -45,13 +45,11 @@ class CooperativeCoevolutionaryAlgorithm():
         with open(str(self.config_dir), 'r') as file:
             self.config = yaml.safe_load(file)
 
-        self.num_asvs = self.config['env']['num_asvs']
-
         self.subpopulation_size = self.config['ccea']['subpopulation_size']
         self.n_elites = self.config["ccea"]["selection"]["n_elites_binary_tournament"]["n_elites"]
         self.include_elites_in_tournament = self.config["ccea"]["selection"]["n_elites_binary_tournament"]["include_elites_in_tournament"]
         self.num_mutants = self.subpopulation_size - self.n_elites
-        self.num_evaluations_per_team = self.config["ccea"]["evaluation"]["multi_evaluation"]["num_evaluations_per_team"]
+        self.num_rollouts_per_team = self.config["ccea"]["evaluation"]["multi_evaluation"]["num_rollouts_per_team"]
 
         self.use_multiprocessing = self.config["processing"]["use_multiprocessing"]
         self.num_threads = self.config["processing"]["num_threads"]
@@ -75,6 +73,7 @@ class CooperativeCoevolutionaryAlgorithm():
         # deepcopy this attribute so we always have a clean one
         self.clean_env = OceanEnv(self.config)
         self.num_auvs = len(self.clean_env.mission.paths)
+        self.num_asvs = len(self.clean_env.mission.asv_start_positions)
         self.num_pois = len(self.clean_env.mission.pois)
 
         # For neural network calculations
@@ -131,7 +130,7 @@ class CooperativeCoevolutionaryAlgorithm():
         # Create evaluation team
         eval_team = self.formEvaluationTeam(population)
         # Evaluate that team however many times we are evaluating teams
-        eval_teams = [eval_team for _ in range(self.num_evaluations_per_team)]
+        eval_teams = [eval_team for _ in range(self.num_rollouts_per_team)]
         return self.evaluateTeams(eval_teams)
 
     def formTeams(self, population, inds=None):
@@ -153,7 +152,7 @@ class CooperativeCoevolutionaryAlgorithm():
                 team.append(subpop[i])
             # Need to save that team for however many evaluations
             # we're doing per team
-            for _ in range(self.num_evaluations_per_team):
+            for _ in range(self.num_rollouts_per_team):
                 # Save that team
                 teams.append(team)
 
@@ -239,7 +238,7 @@ class CooperativeCoevolutionaryAlgorithm():
         # There may be several eval_infos for the same team
         # This is the case if there are many evaluations per team
         # In that case, we need to aggregate those many evaluations into one fitness
-        if self.num_evaluations_per_team == 1:
+        if self.num_rollouts_per_team == 1:
             for team, eval_info in zip(teams, eval_infos):
                 fitnesses = eval_info.rewards
                 for individual, fit in zip(team, fitnesses):
@@ -251,9 +250,9 @@ class CooperativeCoevolutionaryAlgorithm():
                 team_list.append(team)
                 eval_info_list.append(eval_info)
 
-            for team_id, team in enumerate(team_list[::self.num_evaluations_per_team]):
+            for team_id, team in enumerate(team_list[::self.num_rollouts_per_team]):
                 # Get all the eval infos for this team
-                team_eval_infos = eval_info_list[team_id*self.num_evaluations_per_team:(team_id+1)*self.num_evaluations_per_team]
+                team_eval_infos = eval_info_list[team_id*self.num_rollouts_per_team:(team_id+1)*self.num_rollouts_per_team]
                 # Aggregate the fitnesses into a big numpy array
                 all_fitnesses = [eval_info.rewards for eval_info in team_eval_infos]
                 average_fitnesses = [0 for _ in range(len(all_fitnesses[0]))]
@@ -261,7 +260,7 @@ class CooperativeCoevolutionaryAlgorithm():
                     for count, fit in enumerate(fitnesses):
                         average_fitnesses[count] += fit[0]
                 for ind in range(len(average_fitnesses)):
-                    average_fitnesses[ind] = average_fitnesses[ind] / self.num_evaluations_per_team
+                    average_fitnesses[ind] = average_fitnesses[ind] / self.num_rollouts_per_team
                 # And now get that back to the individuals
                 fitnesses = tuple([(f,) for f in average_fitnesses])
                 for individual, fit in zip(team, fitnesses):
@@ -276,7 +275,7 @@ class CooperativeCoevolutionaryAlgorithm():
         header = "generation,team_fitness_aggregated"
         for j in range(self.num_asvs):
             header += ",asv_"+str(j)+"_"
-        for i in range(self.num_evaluations_per_team):
+        for i in range(self.num_rollouts_per_team):
             header+=",team_fitness_"+str(i)
             for j in range(self.num_asvs):
                 header+=",team_"+str(i)+"_asv_"+str(j)
@@ -299,7 +298,7 @@ class CooperativeCoevolutionaryAlgorithm():
                 team_eval_infos.append(eval_info)
             # Aggergate the fitnesses into a big numpy array
             num_ind_per_team = len(team_eval_infos[0].fitnesses)
-            all_fit = np.zeros(shape=(self.num_evaluations_per_team, num_ind_per_team))
+            all_fit = np.zeros(shape=(self.num_rollouts_per_team, num_ind_per_team))
             for num_eval, eval_info in enumerate(team_eval_infos):
                 fitnesses = eval_info.rewards
                 for num_ind, fit in enumerate(fitnesses):
