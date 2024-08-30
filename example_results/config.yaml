@@ -1,16 +1,21 @@
 root_dir: ~/influence-multi-objective
 env:
-  dt: 0.1
+  dt: 1
   collision_step_size: 0.1
   num_asvs: 2
   asv:
     max_speed: 1.0
     network:
       num_hidden: [20,20]
+    observation_type: global
+    raytrace_distance: 100.0
+    num_asv_bins: 8
+    num_auv_bins: 8
+    num_obstacle_traces: 8
   auv:
     max_speed: 1.0
   mission_dir: ~/influence-multi-objective/example_results/mission
-  t_final: 100
+  t_final: 5
   pois:
     - {value: 1.0, observation_radius: 5.0}
     - {value: 1.0, observation_radius: 5.0}
@@ -46,16 +51,17 @@ ccea:
   weight_initialization:
     lower_bound: 0.0
     upper_bound: 1.0
-  subpopulation_size: 50
+  subpopulation_size: 3
   selection:
     n_elites_binary_tournament:
-      n_elites: 5
+      n_elites: 1
       include_elites_in_tournament: False
   evaluation:
     multi_evaluation:
-      num_evaluations_per_team: 1
+      num_rollouts_per_team: 1
+      num_teams_per_evaluation: 1
 processing:
-  use_multiprocessing: True
+  use_multiprocessing: False
   num_threads: 20
 data:
   save_trajectories:
@@ -65,7 +71,8 @@ rewards:
   influence_heuristic: line_of_sight
   influence_type: granular
   auv_reward: none
-  asv_reward: indirect_difference_team
+  asv_reward: global
+  which_critic: none # none, alignment, fitness_critic
   multi_reward: single
   distance_threshold: 5.0
 experiment:
