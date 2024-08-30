@@ -43,17 +43,21 @@ def determine_collisions(pts, connectivity_grid):
     for pt in pts:
         # Map pt to grid
         if determine_collision(pt, connectivity_grid):
-            return True
-    return False
+            return True, pt
+    return False, None
 
 # Make it so ping only works with line of sight
-def line_of_sight(positionA, positionB, connectivity_grid, step_size):
+def raycast(positionA, positionB, connectivity_grid, step_size):
     pts = generate_steps(positionA, positionB, step_size)
     # No collisions means we have line of sight
-    if not determine_collisions(pts, connectivity_grid):
-        return True
+    collision, pt = determine_collisions(pts, connectivity_grid)
+    if not collision:
+        return True, None
     else:
-        return False
+        return False, pt
+
+def line_of_sight(positionA, positionB, connectivity_grid, step_size):
+    return raycast(positionA, positionB, connectivity_grid, step_size)[0]
 
 # Check whether two paths are the same path
 def check_path(pathA, pathB):

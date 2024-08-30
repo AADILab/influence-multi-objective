@@ -2,7 +2,7 @@ import os
 from copy import deepcopy
 import numpy as np
 from pathlib import Path
-from influence_moo.utils import out_of_bounds, determine_collision, line_of_sight
+from influence_moo.utils import out_of_bounds, determine_collision, line_of_sight, raycast
 from influence_moo.env.mission import Mission
 
 class AUV():
@@ -385,6 +385,11 @@ class OceanEnv():
         self.asv_max_speed = ec['asv']['max_speed']
         self.auv_max_speed = ec['asv']['max_speed']
         self.collision_step_size = ec['collision_step_size']
+        self.asv_observation_type = ec['asv']['observation_type']
+        self.asv_raytrace_distance = ec['asv']['raytrace_distance']
+        self.num_asv_bins = ec['asv']['num_asv_bins']
+        self.num_auv_bins = ec['asv']['num_auv_bins']
+
         self.pois = []
         for poi_position, poi_config in zip(self.mission.pois, ec['pois']):
             self.pois.append(POI(position=poi_position, value=poi_config['value'], observation_radius=poi_config['observation_radius']))
@@ -399,17 +404,71 @@ class OceanEnv():
         map information - raycast in 8 directions that probe how far a wall is (like a lidar)
         and that gives a lower dimensional representation but still a useful one
         """
-        observation = [self.asvs[asv_ind].position[0], self.asvs[asv_ind].position[1]]
-        other_asvs = remove_agent(self.asvs, asv_ind)
-        for asv in other_asvs:
-            observation.append(asv.position[0])
-            observation.append(asv.position[1])
-        for auv in self.auvs:
-            # ASV has the same hypothesis about where AUVs are
-            observation.append(auv.h_position[0])
-            observation.append(auv.h_position[1])
-        observation = np.array(observation)
-        return observation
+        if self.asv_observation_type == 'global':
+            observation = [self.asvs[asv_ind].position[0], self.asvs[asv_ind].position[1]]
+            other_asvs = remove_agent(self.asvs, asv_ind)
+            for asv in other_asvs:
+                observation.append(asv.position[0])
+                observation.append(asv.position[1])
+            for auv in self.auvs:
+                # ASV has the same hypothesis about where AUVs are
+                observation.append(auv.h_position[0])
+                observation.append(auv.h_position[1])
+            observation = np.array(observation)
+            return observation
+        elif self.asv_observation_type == 'local':
+            observation = []
+
+            # Raytracing for obstacles
+            for i in range(self.num_obstacle_traces):
+                angle = 2*np.pi * i/float(self.num_obstacle_traces)
+                pos = np.array([self.asv_raytrace_distance * np.cos(angle), self.asv_raytrace_distance * np.sin(angle)])
+                collision, pt = raycast(self.asvs[asv_ind].position, pos)
+                if collision:
+                    # The ray hit a point. Get distance to that point
+                    observation.append(np.linalg.norm(self.asvs[asv_ind].position - pt))
+                else:
+                    # No collisions. Use max distance
+                    observation.append(self.asv_raytrace_distance)
+
+            # Binning for other ASVs
+            bins = [[] for _ in range(self.num_asv_bins)]
+            angle_increment = 2*np.pi / self.num_asv_bins
+            other_asvs = remove_agent(self.asvs, asv_ind)
+            for asv in other_asvs:
+                if line_of_sight(self.asvs[asv_ind], asv.position):
+                    # Bin the ASV if it's in line of sight
+                    y = asv.position[1] - self.asvs[asv_ind].position[1]
+                    x = asv.position[0] - self.asvs[asv_ind].position[0]
+                    angle = np.arctan2(y, x)
+                    bin_num = int(angle / angle_increment)
+                    if bin_num == len(bins):
+                        bin_num -= 1
+                    distance = np.linalg.norm(self.asvs[asv_ind], asv.position)
+                    bins[bin_num].append(distance)
+            # Turn bins into observations
+            for bin in bins:
+                observation.append(min(bin))
+
+            # Binning for AUVs
+            bins = [[] for _ in range(self.num_auv_bins)]
+            angle_increment = 2*np.pi / self.num_auv_bins
+            for auv in self.auvs:
+                if line_of_sight(self.asvs[asv_ind], auv.position):
+                    # Bin the ASV if it's in line of sight
+                    y = auv.position[1] - self.asvs[asv_ind].position[1]
+                    x = auv.position[0] - self.asvs[asv_ind].position[0]
+                    angle = np.arctan2(y, x)
+                    bin_num = int(angle / angle_increment)
+                    if bin_num == len(bins):
+                        bin_num -= 1
+                    distance = np.linalg.norm(self.asvs[asv_ind], auv.position)
+                    bins[bin_num].append(distance)
+            # Turn bins into observations
+            for bin in bins:
+                observation.append(min(bin))
+
+            return observation
 
     def step(self):
         # Ping auvs
