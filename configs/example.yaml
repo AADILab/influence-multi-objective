@@ -1,42 +1,23 @@
 root_dir: /home/gonzaeve/influence-multi-objective
 env:
-  dt: 0.1
+  dt: 1.0
   collision_step_size: 0.1
   num_asvs: 2
   asv:
     max_speed: 1.0
     network:
       num_hidden: [20,20]
+    observation_type: global
+    raytrace_distance: 100.0
+    num_asv_bins: 8
+    num_auv_bins: 8
   auv:
     max_speed: 1.0
-  mission_dir: /home/gonzaeve/influence-multi-objective/results/atrium/mission
-  t_final: 100
+  mission_dir: /home/gonzaeve/influence-multi-objective/results/captain_c/mission
+  t_final: 10
   pois:
-    - {value: 1.0, observation_radius: 5.0}
-    - {value: 1.0, observation_radius: 5.0}
-    - {value: 1.0, observation_radius: 5.0}
-    - {value: 1.0, observation_radius: 5.0}
-    - {value: 1.0, observation_radius: 5.0}
-    - {value: 1.0, observation_radius: 5.0}
-    - {value: 1.0, observation_radius: 5.0}
-    - {value: 1.0, observation_radius: 5.0}
-    - {value: 1.0, observation_radius: 5.0}
-    - {value: 1.0, observation_radius: 5.0}
-    - {value: 1.0, observation_radius: 5.0}
-    - {value: 1.0, observation_radius: 5.0}
-    - {value: 1.0, observation_radius: 5.0}
-    - {value: 1.0, observation_radius: 5.0}
-    - {value: 1.0, observation_radius: 5.0}
-    - {value: 1.0, observation_radius: 5.0}
-    - {value: 1.0, observation_radius: 5.0}
-    - {value: 1.0, observation_radius: 5.0}
-    - {value: 1.0, observation_radius: 5.0}
-    - {value: 1.0, observation_radius: 5.0}
-    - {value: 1.0, observation_radius: 5.0}
-    - {value: 1.0, observation_radius: 5.0}
-    - {value: 1.0, observation_radius: 5.0}
-    - {value: 1.0, observation_radius: 5.0}
-    - {value: 1.0, observation_radius: 5.0}
+    - {value: 1.0, observation_radius: 100.0}
+    - {value: 1.0, observation_radius: 100.0}
 ccea:
   num_generations: 1000
   weight_initialization:
@@ -46,13 +27,18 @@ ccea:
   selection:
     n_elites_binary_tournament:
       n_elites: 5
-      include_elites_in_tournament: False
+      include_elites_in_tournament: True
+  mutation:
+    mean: 0.0
+    std_deviation: 1.0
+    independent_probability: 0.5
   evaluation:
     multi_evaluation:
-      num_evaluations_per_team: 1
+      num_rollouts_per_team: 1
+      num_teams_per_evaluation: 2
 processing:
   use_multiprocessing: True
-  num_threads: 1
+  num_threads: 3
 data:
   save_trajectories:
     switch: True
@@ -61,7 +47,7 @@ rewards:
   influence_heuristic: line_of_sight
   influence_type: granular
   auv_reward: none
-  asv_reward: indirect_difference_team
+  asv_reward: global
   multi_reward: single
   distance_threshold: 5.0
 experiment:
