@@ -162,6 +162,7 @@ class Rewards():
             return False
 
     def global_(self, auvs, asvs):
+        # TODO: Return a vector of G_steps when using a fitness critic
         """Global reward for entire team"""
         # Get path lengths
         num_steps = len(auvs[0].path)
@@ -389,6 +390,7 @@ class OceanEnv():
         self.asv_raytrace_distance = ec['asv']['raytrace_distance']
         self.num_asv_bins = ec['asv']['num_asv_bins']
         self.num_auv_bins = ec['asv']['num_auv_bins']
+        self.num_obstacle_traces = ec['asv']['num_obstacle_traces']
 
         self.pois = []
         for poi_position, poi_config in zip(self.mission.pois, ec['pois']):
@@ -423,7 +425,7 @@ class OceanEnv():
             for i in range(self.num_obstacle_traces):
                 angle = 2*np.pi * i/float(self.num_obstacle_traces)
                 pos = np.array([self.asv_raytrace_distance * np.cos(angle), self.asv_raytrace_distance * np.sin(angle)])
-                collision, pt = raycast(self.asvs[asv_ind].position, pos)
+                collision, pt = raycast(self.asvs[asv_ind].position, pos, self.mission.connectivity_grid, self.collision_step_size)
                 if collision:
                     # The ray hit a point. Get distance to that point
                     observation.append(np.linalg.norm(self.asvs[asv_ind].position - pt))
@@ -480,7 +482,7 @@ class OceanEnv():
         for asv_ind, asv in enumerate(self.asvs):
             # Placeholder action
             asv_velocity = np.array([0.,0.])
-            asv_observation = np.zeros(2*len(self.asvs)+2*len(self.auvs)+self.mission.connectivity_grid.size)
+            asv_observation = np.zeros(2*len(self.asvs)+2*len(self.auvs))
             if not asv.crashed:
                 asv_observation = self.get_asv_observation(asv_ind)
                 asv_velocity = asv.policy(asv_observation)

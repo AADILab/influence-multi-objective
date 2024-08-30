@@ -8,16 +8,17 @@ class Net():
         learning_rate=lr
         self.device=device
 
-        
+
         self.model = torch.nn.Sequential(
-            torch.nn.Linear(8, hidden),
+            # TODO: Make 10 an input variable, not hard coded
+            torch.nn.Linear(10, hidden),
             torch.nn.Tanh(),
             torch.nn.Linear(hidden, hidden),
             torch.nn.Tanh(),
             torch.nn.Linear(hidden,1)
         ).to(device)
-        
-            
+
+
         if loss_fn==0:
             self.loss_fn = torch.nn.MSELoss(reduction='sum')
         elif loss_fn==1:
@@ -27,19 +28,19 @@ class Net():
 
         self.sig = torch.nn.Sigmoid()
 
-        
+
         self.optimizer = torch.optim.Adam(self.model.parameters(), lr=learning_rate)
     def feed(self,x):
         x=torch.from_numpy(x.astype(np.float32)).to(self.device)
         pred=self.model(x)
         return pred.cpu().detach().numpy()
-        
-    
+
+
     def train(self,x,y,shaping=False,n=5,verb=0):
         x=torch.from_numpy(x.astype(np.float32)).to(self.device)
         y=torch.from_numpy(y.astype(np.float32)).to(self.device)
         pred=self.model(x)
-        
+
         loss=self.loss_fn(pred,y)
         self.optimizer.zero_grad()
         loss.backward()
@@ -60,7 +61,7 @@ class Net():
         align = self.sig(align)
         loss = -torch.mean(align)
         return loss
-    
+
 class fitnesscritic():
     def __init__(self,nagents,device,loss_f=0):
         self.nagents=nagents
@@ -68,7 +69,8 @@ class fitnesscritic():
         self.hist=[deque(maxlen=30000) for i in range(nagents)]
 
     def add(self,trajectory,G,agent_index):
-        self.hist[agent_index].append([trajectory,G])
+        for traj,g in zip (trajectory,G):
+            self.hist[agent_index].append([traj,g])
 
     def evaluate(self,trajectory,agent_index):   #evaluate max state
         return np.max(self.nets[agent_index].feed(trajectory))

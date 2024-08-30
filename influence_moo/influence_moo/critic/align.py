@@ -8,16 +8,17 @@ class Net():
         learning_rate=lr
         self.device=device
 
-        
+
         self.model = torch.nn.Sequential(
-            torch.nn.Linear(8, hidden),
+            # TODO: Make 10 an input variable, not hard coded
+            torch.nn.Linear(10, hidden),
             torch.nn.Tanh(),
             torch.nn.Linear(hidden, hidden),
             torch.nn.Tanh(),
             torch.nn.Linear(hidden,1)
         ).to(device)
-        
-            
+
+
         if loss_fn==0:
             self.loss_fn = torch.nn.MSELoss(reduction='sum')
         elif loss_fn==1:
@@ -27,19 +28,21 @@ class Net():
 
         self.sig = torch.nn.Sigmoid()
 
-        
+
         self.optimizer = torch.optim.Adam(self.model.parameters(), lr=learning_rate)
     def feed(self,x):
         x=torch.from_numpy(x.astype(np.float32)).to(self.device)
         pred=self.model(x)
         return pred.cpu().detach().numpy()
-        
-    
+
+
     def train(self,x,y,shaping=False,n=5,verb=0):
         x=torch.from_numpy(x.astype(np.float32)).to(self.device)
         y=torch.from_numpy(y.astype(np.float32)).to(self.device)
+        # x is a matrix of observations.
+        # y is the target output. The reward (G)
         pred=self.model(x)
-        
+
         loss=self.loss_fn(pred,y)
         self.optimizer.zero_grad()
         loss.backward()
@@ -60,7 +63,7 @@ class Net():
         align = self.sig(align)
         loss = -torch.mean(align)
         return loss
-    
+
 class align():
     def __init__(self,nagents,device,loss_f=0):
         self.nagents=nagents
@@ -83,7 +86,7 @@ class align():
                     trajG=sample(self.hist[a],24)
                 S,G=[],[]
                 for traj,g in trajG:
-                    S.append(traj[-1])
+                    S.append(traj)
                     G.append([g])
                 S,G=np.array(S),np.array(G)
                 self.nets[a].train(S,G)

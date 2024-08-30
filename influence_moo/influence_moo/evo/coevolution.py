@@ -16,8 +16,8 @@ from tqdm import tqdm
 
 from influence_moo.evo.network import NeuralNetwork
 from influence_moo.env.env import OceanEnv
-from influence_moo.env.critic.align import align
-from influence_moo.env.critic.fitnesscritic import fitnesscritic
+from influence_moo.critic.align import align
+from influence_moo.critic.fitnesscritic import fitnesscritic
 
 class JointTrajectory():
     def __init__(
@@ -37,6 +37,8 @@ class JointTrajectory():
 
 class EvalInfo():
     def __init__(self, rewards, joint_trajectory):
+        # -1 index is the global reward(s) [scalar for shaping, vector for fitness critic]
+        # other indicies are for individual agent rewards
         self.rewards = rewards
         self.joint_trajectory = joint_trajectory
 
@@ -88,9 +90,9 @@ class CooperativeCoevolutionaryAlgorithm():
         # For neural network calculations
         self.nn_template = self.generateTemplateNeuralNetwork(num_hidden=self.config['env']['asv']['network']['num_hidden'])
 
-        if self.config['ccea']['rewards']['asv_reward']=="alignment":
+        if self.config['rewards']['which_critic']=="alignment":
             self.critic=align(self.num_asvs,"cpu",2)
-        elif self.config['ccea']['rewards']['asv_reward']=="alignment":
+        elif self.config['rewards']['which_critic']=="fitness_critic":
             self.critic=fitnesscritic(self.num_asvs,"cpu",0)
         else:
             self.critic=None
@@ -219,7 +221,7 @@ class CooperativeCoevolutionaryAlgorithm():
                 asv_paths = [asv.path for asv in env.asvs],
                 asv_actions = [asv.action_history for asv in env.asvs],
                 asv_crash_histories = [asv.crash_history for asv in env.asvs],
-                obs_histories=[[asv.obs_history for asv in env.asvs]]
+                obs_histories=[[asv.observation_history for asv in env.asvs]]
             )
         )
 
@@ -267,6 +269,7 @@ class CooperativeCoevolutionaryAlgorithm():
         for team, eval in zip(teams, eval_infos):
             trajectory=eval.joint_trajectory.obs_histories
             for individual, traj,idx in zip(team.individuals, trajectory,range(len(team.individuals))):
+                traj = np.array(traj[0])
                 individual.fitness_list.append(self.critic.evaluate(traj,idx))
 
     def criticAdd(self,teams,eval_infos):
@@ -274,13 +277,19 @@ class CooperativeCoevolutionaryAlgorithm():
             trajectory=eval.joint_trajectory.obs_histories
             rewards=eval.rewards
             for r,traj,idx in zip(rewards, trajectory,range(len(team.individuals))):
+                traj = np.array(traj[0])
+                # r = np.array(r)
+                r = [1 for _ in traj]
                 self.critic.add(traj,r,idx)
 
 
     def aggregateFitnesses(self, population):
         for subpop in population:
             for individual in subpop:
-                individual.fitness.values = tuple(np.average(np.array(individual.fitness_list), axis=0))
+                if len(individual.fitness_list) == 1:
+                    individual.fitness.values = (individual.fitness_list[0],)
+                else:
+                    individual.fitness.values = (np.average(np.array(individual.fitness_list), axis=0),)
 
     def setPopulation(self, population, offspring):
         for subpop, subpop_offspring in zip(population, offspring):
@@ -437,7 +446,7 @@ class CooperativeCoevolutionaryAlgorithm():
 
         for gen in tqdm(range(self.config["ccea"]["num_generations"])):
             # Update gen counter
-            
+
             self.gen = gen
             # Perform selection
             offspring = self.select(pop)
