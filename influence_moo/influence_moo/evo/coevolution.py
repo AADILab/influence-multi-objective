@@ -287,7 +287,7 @@ class CooperativeCoevolutionaryAlgorithm():
         for subpop in population:
             for individual in subpop:
                 if len(individual.fitness_list) == 1:
-                    individual.fitness.values = (individual.fitness_list[0],)
+                    individual.fitness.values = individual.fitness_list[0]
                 else:
                     individual.fitness.values = (np.average(np.array(individual.fitness_list), axis=0),)
 
