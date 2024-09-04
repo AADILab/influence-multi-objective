@@ -8,4 +8,4 @@ module load python/3.10
 source ~/venv/influence/bin/activate
 
 
-python ~/influence-multi-objective/influence_moo/influence_moo/run_cli.py /home/gonzaeve/influence-multi-objective/results/captain_c/observations/global/fitness_bias/3_teams_per_evaluation/D/config.yaml -t 5
+python ~/influence-multi-objective/influence_moo/influence_moo/run_cli.py ~/influence-multi-objective/results/captain_c/observations/global/fitness_bias/3_teams_per_evaluation/D/config.yaml -t 5
