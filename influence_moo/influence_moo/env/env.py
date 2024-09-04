@@ -438,7 +438,7 @@ class OceanEnv():
             angle_increment = 2*np.pi / self.num_asv_bins
             other_asvs = remove_agent(self.asvs, asv_ind)
             for asv in other_asvs:
-                if line_of_sight(self.asvs[asv_ind], asv.position):
+                if line_of_sight(self.asvs[asv_ind], asv.position, self.mission.connectivity_grid, self.collision_step_size):
                     # Bin the ASV if it's in line of sight
                     y = asv.position[1] - self.asvs[asv_ind].position[1]
                     x = asv.position[0] - self.asvs[asv_ind].position[0]
@@ -456,7 +456,7 @@ class OceanEnv():
             bins = [[] for _ in range(self.num_auv_bins)]
             angle_increment = 2*np.pi / self.num_auv_bins
             for auv in self.auvs:
-                if line_of_sight(self.asvs[asv_ind], auv.position):
+                if line_of_sight(self.asvs[asv_ind], auv.position, self.mission.connectivity_grid, self.collision_step_size):
                     # Bin the ASV if it's in line of sight
                     y = auv.position[1] - self.asvs[asv_ind].position[1]
                     x = auv.position[0] - self.asvs[asv_ind].position[0]
