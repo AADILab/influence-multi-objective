@@ -542,3 +542,11 @@ class OceanEnv():
 
         for _ in range(self.num_iterations):
             self.step()
+
+        # Add final observations
+        for asv_ind, asv in enumerate(self.asvs):
+            # Just get the observation
+            asv_observation = np.zeros(2*len(self.asvs)+2*len(self.auvs))
+            if not asv.crashed:
+                asv_observation = self.get_asv_observation(asv_ind)
+            asv.observation_history.append(asv_observation)
