@@ -75,7 +75,7 @@ class align():
             self.hist[agent_index].append([traj,g])
 
     def evaluate(self,trajectory,agent_index):
-        return np.sum(self.nets[agent_index].feed(trajectory))
+        return (np.sum(self.nets[agent_index].feed(trajectory)) ,)
 
     def train(self):
         for a in range(self.nagents):
