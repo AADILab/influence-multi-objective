@@ -438,7 +438,7 @@ class OceanEnv():
             angle_increment = 2*np.pi / self.num_asv_bins
             other_asvs = remove_agent(self.asvs, asv_ind)
             for asv in other_asvs:
-                if line_of_sight(self.asvs[asv_ind], asv.position, self.mission.connectivity_grid, self.collision_step_size):
+                if line_of_sight(self.asvs[asv_ind].position, asv.position, self.mission.connectivity_grid, self.collision_step_size):
                     # Bin the ASV if it's in line of sight
                     y = asv.position[1] - self.asvs[asv_ind].position[1]
                     x = asv.position[0] - self.asvs[asv_ind].position[0]
@@ -446,17 +446,20 @@ class OceanEnv():
                     bin_num = int(angle / angle_increment)
                     if bin_num == len(bins):
                         bin_num -= 1
-                    distance = np.linalg.norm(self.asvs[asv_ind], asv.position)
+                    distance = np.linalg.norm(self.asvs[asv_ind].position - asv.position)
                     bins[bin_num].append(distance)
             # Turn bins into observations
             for bin in bins:
-                observation.append(min(bin))
+                if len(bin) > 0:
+                    observation.append(min(bin))
+                else:
+                    observation.append(-1)
 
             # Binning for AUVs
             bins = [[] for _ in range(self.num_auv_bins)]
             angle_increment = 2*np.pi / self.num_auv_bins
             for auv in self.auvs:
-                if line_of_sight(self.asvs[asv_ind], auv.position, self.mission.connectivity_grid, self.collision_step_size):
+                if line_of_sight(self.asvs[asv_ind].position, auv.position, self.mission.connectivity_grid, self.collision_step_size):
                     # Bin the ASV if it's in line of sight
                     y = auv.position[1] - self.asvs[asv_ind].position[1]
                     x = auv.position[0] - self.asvs[asv_ind].position[0]
@@ -464,11 +467,14 @@ class OceanEnv():
                     bin_num = int(angle / angle_increment)
                     if bin_num == len(bins):
                         bin_num -= 1
-                    distance = np.linalg.norm(self.asvs[asv_ind], auv.position)
+                    distance = np.linalg.norm(self.asvs[asv_ind].position - auv.position)
                     bins[bin_num].append(distance)
             # Turn bins into observations
             for bin in bins:
-                observation.append(min(bin))
+                if len(bin) > 0:
+                    observation.append(min(bin))
+                else:
+                    observation.append(-1)
 
             return observation
 
