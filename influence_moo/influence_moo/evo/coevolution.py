@@ -88,7 +88,7 @@ class CooperativeCoevolutionaryAlgorithm():
         self.num_pois = len(self.clean_env.mission.pois)
 
         # For neural network calculations
-        self.nn_template = self.generateTemplateNeuralNetwork(num_hidden=self.config['env']['asv']['network']['num_hidden'])
+        self.nn_template = self.generateTemplateNeuralNetwork()
 
         if self.config['rewards']['which_critic']=="alignment":
             self.critic=align(self.num_asvs,"cpu",2)
@@ -108,11 +108,15 @@ class CooperativeCoevolutionaryAlgorithm():
     def __setstate__(self, state):
         self.__dict__.update(state)
 
-    def generateTemplateNeuralNetwork(self, num_hidden):
+    def generateTemplateNeuralNetwork(self):
+        asv_config = self.config['env']['asv']
+        if asv_config['observation_type'] == 'global':
+            num_inputs = 2*self.num_asvs+2*len(self.clean_env.mission.paths)
+        elif asv_config['observation_type'] == 'local':
+            num_inputs = asv_config['num_asv_bins']+asv_config['num_auv_bins']+asv_config['num_obstacle_traces']
         agent_nn = NeuralNetwork(
-            num_inputs=2*self.num_asvs+\
-                2*len(self.clean_env.mission.paths),
-            num_hidden=num_hidden,
+            num_inputs=num_inputs,
+            num_hidden=asv_config['network']['num_hidden'],
             num_outputs=2
         )
         return agent_nn
