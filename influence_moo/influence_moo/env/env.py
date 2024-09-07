@@ -193,7 +193,7 @@ class Rewards():
             G_step = 0
             for poi, auv_info in zip(self.pois, nearest_auvs):
                 # Make sure this POI was observed
-                if auv_info.auv_ind is not None and auv_info.distance < poi.observation_radius:
+                if auv_info.auv_ind is not None and auv_info.distance <= poi.observation_radius:
                     G_step += 1./np.max((auv_info.distance, 1.)) * poi.value
 
             # Add this step-wise reward to the trajectory reward
@@ -311,6 +311,27 @@ class Rewards():
             influence_j_list = [
                 influence_array - counterfactual_influence for counterfactual_influence in counterfactual_influence_list
             ]
+            if self.influence_type == "all_or_nothing":
+                # Create an influence vector for each auv of how much each avs influenced it
+                auv_arrs = [np.zeros((len(asvs),)) for auv in auvs]
+                for i in range(len(auvs)):
+                    for influence_j in influence_j_list:
+                        # Total up influence of this asv on this auv
+                        auv_arrs[i][j] = np.sum(influence_j[:,i])
+
+                # Choose which asv gets credit for each auv's actions
+                asv_inds = []
+                for auv_arr in auv_arrs:
+                    asv_inds.append(np.argmax(auv_arr))
+
+                # Turn this back into an influence array. One for each asv
+                num_steps = len(auvs[0].path)
+                num_auvs = len(auvs)
+                influence_j_list = [np.zeros((num_steps, num_auvs)) for asv in asvs]
+                for auv_ind, asv_ind in enumerate(asv_inds):
+                    # Get index of asv. The influence of that asv across the entire path for that auv...
+                    influence_j_list[asv_ind][:, auv_ind] = 1.0
+
             # Create counterfactual AUV paths with the influence of asv j removed
             auvs_minus_j_list = [
                 self.remove_influence(auvs, influence_j) for influence_j in influence_j_list
