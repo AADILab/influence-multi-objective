@@ -93,6 +93,7 @@ class Rewards():
         TODO: Counterfactual influence vs local influence
         influence_heuristic: line_of_sight, distance_threshold
         influence_type: all_or_nothing, granular
+        trajectory_influence_threshold: 0.0 (float). ASV must influence AUV more than this threshold accross the AUV's trajectory for the ASV to be eligible for getting credit for this AUV
         auv_reward: global, local, difference
         asv_reward: global, local, difference, indirect_difference
         multi_reward: single, multiple
@@ -103,6 +104,7 @@ class Rewards():
 
         self.influence_heuristic = config['rewards']['influence_heuristic']
         self.influence_type = config['rewards']['influence_type']
+        self.trajectory_influence_threshold = config['rewards']['trajectory_influence_threshold']
         self.auv_reward = config['rewards']['auv_reward']
         self.asv_reward = config['rewards']['asv_reward']
         self.multi_reward = config['rewards']['multi_reward']
@@ -277,6 +279,7 @@ class Rewards():
         """
         influence_heuristic: line_of_sight, distance_threshold
         influence_type: all_or_nothing, granular
+        trajectory_influence_threshold: 0.0 (float)
         auv_reward: global, local, difference
         asv_reward: global, local, difference, indirect_difference_team, indirect_difference_auv
         multi_reward: single, multiple
@@ -315,22 +318,31 @@ class Rewards():
                 # Create an influence vector for each auv of how much each avs influenced it
                 auv_arrs = [np.zeros((len(asvs),)) for auv in auvs]
                 for i in range(len(auvs)):
-                    for influence_j in influence_j_list:
+                    for j, influence_j in enumerate(influence_j_list):
                         # Total up influence of this asv on this auv
                         auv_arrs[i][j] = np.sum(influence_j[:,i])
 
                 # Choose which asv gets credit for each auv's actions
                 asv_inds = []
                 for auv_arr in auv_arrs:
-                    asv_inds.append(np.argmax(auv_arr))
+                    best_influence = None
+                    best_asv_ind = None
+                    for asv_ind, asv_influence in enumerate(auv_arr):
+                        if (best_asv_ind is None and asv_influence > self.trajectory_influence_threshold) \
+                            or (best_asv_ind is not None and asv_influence > best_influence):
+                            best_asv_ind = asv_ind
+                            best_influence = asv_influence
+
+                    asv_inds.append(best_asv_ind)
 
                 # Turn this back into an influence array. One for each asv
                 num_steps = len(auvs[0].path)
                 num_auvs = len(auvs)
                 influence_j_list = [np.zeros((num_steps, num_auvs)) for asv in asvs]
                 for auv_ind, asv_ind in enumerate(asv_inds):
-                    # Get index of asv. The influence of that asv across the entire path for that auv...
-                    influence_j_list[asv_ind][:, auv_ind] = 1.0
+                    if asv_ind is not None:
+                        # Get index of asv. The influence of that asv across the entire path for that auv...
+                        influence_j_list[asv_ind][:, auv_ind] = 1.0
 
             # Create counterfactual AUV paths with the influence of asv j removed
             auvs_minus_j_list = [

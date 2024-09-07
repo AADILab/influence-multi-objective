@@ -69,7 +69,8 @@ data:
     num_gens_between_save: 10
 rewards:
   influence_heuristic: line_of_sight
-  influence_type: granular
+  influence_type: all_or_nothing
+  trajectory_influence_threshold: 0.0
   auv_reward: none
   asv_reward: global
   which_critic: none # none, alignment, fitness_critic

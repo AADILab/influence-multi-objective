@@ -195,6 +195,7 @@ class TestRewards(unittest.TestCase):
             {
                 "influence_heuristic": "line_of_sight",
                 "influence_type": "granular",
+                "trajectory_influence_threshold": 0.0,
                 "auv_reward": "difference",
                 "asv_reward": "indirect_difference_auv",
                 "multi_reward": "multiple",
@@ -413,6 +414,7 @@ class TestRewards(unittest.TestCase):
             {
                 "influence_heuristic": "line_of_sight",
                 "influence_type": "granular",
+                "trajectory_influence_threshold": 0.0,
                 "auv_reward": "difference",
                 "asv_reward": "indirect_difference_auv",
                 "multi_reward": "single",
@@ -427,7 +429,7 @@ class TestRewards(unittest.TestCase):
             config = config
         )
 
-        expected_out = [0.3, 1.2]
+        expected_out = [0.6, 1.2]
         actual_out, G = rewards.compute(auvs, asvs)
         self.assertTrue(np.array(actual_out).shape == (2,),
             "Expected single reward for each asv. This is multiple rewards per asv")
@@ -443,7 +445,8 @@ class TestRewards(unittest.TestCase):
             "rewards":
             {
                 "influence_heuristic": "line_of_sight",
-                "influence_type": "granular",
+                "influence_type": "all_or_nothing",
+                "trajectory_influence_threshold": 0.0,
                 "auv_reward": "difference",
                 "asv_reward": "indirect_difference_auv",
                 "multi_reward": "single",
@@ -458,6 +461,13 @@ class TestRewards(unittest.TestCase):
             config = config
         )
 
+        # Just compare the expected output to the actual output
+        expected_rewards = [5.6, 1.2]
+        expected_G = 10.5
+        rewards, G = rewards.compute(auvs=auvs, asvs=asvs)
+        self.assertTrue(np.isclose(expected_G, G), "G from rewards.compute() does not match expected G")
+        self.assertTrue(np.allclose(expected_rewards, rewards),
+            "ASV rewards from rewards.compute() does not match expected rewards")
 
 if __name__ == '__main__':
     unittest.main()
