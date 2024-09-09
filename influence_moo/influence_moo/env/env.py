@@ -173,6 +173,7 @@ class Rewards():
                 raise Exception("Agents have different length paths")
 
         G_total = 0
+        G_vec=[]
         for i in range(num_steps):
             # Compute a step-wise reward
 
@@ -200,8 +201,9 @@ class Rewards():
 
             # Add this step-wise reward to the trajectory reward
             G_total += G_step
+            G_vec.append(G_step)
 
-        return G_total
+        return G_total,G_vec
 
     def difference(self, auvs, auv_ind, team_reward):
         """Difference reward for a single AUV"""
@@ -285,19 +287,19 @@ class Rewards():
         multi_reward: single, multiple
         """
         # Compute global reward
-        G = self.global_(auvs=auvs, asvs=asvs)
+        G,G_vec = self.global_(auvs=auvs, asvs=asvs)
 
         # Global reward for ASVs
         if self.asv_reward == "global":
-            return [G for asv in asvs], G
+            return [G for asv in asvs], G ,G_vec 
         # Local reward for ASVs
         elif self.asv_reward == "local":
-            return [self.local_asv_reward(auvs=auvs, asv=asv) for asv in asvs], G
+            return [self.local_asv_reward(auvs=auvs, asv=asv) for asv in asvs], G ,G_vec 
         # Difference reward for ASVs
         elif self.asv_reward == "difference":
             # Removing an ASV's path does not actually change G
             # Hence, the difference reward is always 0.0
-            return [0.0 for asv in asvs], G
+            return [0.0 for asv in asvs], G ,G_vec 
         # Indirect difference reward for ASVs based on indirect contribution to team
         elif self.asv_reward == "indirect_difference_team" or self.asv_reward == "indirect_difference_auv":
             # Create influence array that tells us how much each AUV was influenced
@@ -356,7 +358,7 @@ class Rewards():
                 # Finally compute an indirect difference reward with these counterfactual paths
                 return [
                     G-counterfactual_G for counterfactual_G in counterfactual_G_j_list
-                ], G
+                ], G ,G_vec 
 
         # Rewards for AUVs that will be used to derive ASV rewards
         if self.auv_reward == "global":
@@ -402,9 +404,9 @@ class Rewards():
                     for i in range(len(asvs)):
                         asv_rewards[i][j] = decomposed_auv_rewards[j][i]
                 if self.multi_reward == "multiple":
-                    return asv_rewards, G
+                    return asv_rewards, G ,G_vec 
                 elif self.multi_reward == "single":
-                    return [sum(rewards_per_asv) for rewards_per_asv in asv_rewards], G
+                    return [sum(rewards_per_asv) for rewards_per_asv in asv_rewards], G ,G_vec 
 
 class OceanEnv():
     def __init__(self, config):

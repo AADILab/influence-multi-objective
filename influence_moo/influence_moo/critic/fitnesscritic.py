@@ -4,14 +4,14 @@ from collections import deque
 from random import sample
 
 class Net():
-    def __init__(self,device,hidden=20*4,lr=5e-3,loss_fn=2):#*4
+    def __init__(self,device,hidden=20*4,state=10,lr=5e-3,loss_fn=2):#*4
         learning_rate=lr
         self.device=device
 
 
         self.model = torch.nn.Sequential(
             # TODO: Make 10 an input variable, not hard coded
-            torch.nn.Linear(10, hidden),
+            torch.nn.Linear(state, hidden),
             torch.nn.Tanh(),
             torch.nn.Linear(hidden, hidden),
             torch.nn.Tanh(),
@@ -63,9 +63,10 @@ class Net():
         return loss
 
 class fitnesscritic():
-    def __init__(self,nagents,device,loss_f=0):
+    def __init__(self,nagents,device,loss_f=0,config=None):
         self.nagents=nagents
-        self.nets=[Net(device,loss_fn=loss_f) for i in range(nagents)]
+        self.config=config
+        self.nets=[Net(device,loss_fn=loss_f,state=config["critic"]["state_size"]) for i in range(nagents)]
         self.hist=[deque(maxlen=30000) for i in range(nagents)]
 
     def add(self,trajectory,G,agent_index):

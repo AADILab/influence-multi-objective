@@ -1,4 +1,4 @@
-root_dir: ~/influence-multi-objective
+root_dir: ~/programs/influence-multi-objective
 env:
   dt: 1
   collision_step_size: 0.1
@@ -14,7 +14,7 @@ env:
     num_obstacle_traces: 8
   auv:
     max_speed: 1.0
-  mission_dir: ~/influence-multi-objective/example_results/mission
+  mission_dir: ~/programs/influence-multi-objective/example_results/mission
   t_final: 5
   pois:
     - {value: 1.0, observation_radius: 5.0}
@@ -73,8 +73,10 @@ rewards:
   trajectory_influence_threshold: 0.0
   auv_reward: none
   asv_reward: global
-  which_critic: none # none, alignment, fitness_critic
+  which_critic: alignment # none, alignment, fitness_critic
   multi_reward: single
   distance_threshold: 5.0
+critic:
+  state_size: 12
 experiment:
   num_trials: 10

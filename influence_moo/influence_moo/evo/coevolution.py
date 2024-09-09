@@ -91,9 +91,9 @@ class CooperativeCoevolutionaryAlgorithm():
         self.nn_template = self.generateTemplateNeuralNetwork()
 
         if self.config['rewards']['which_critic']=="alignment":
-            self.critic=align(self.num_asvs,"cpu",2)
+            self.critic=align(self.num_asvs,"cpu",2,self.config)
         elif self.config['rewards']['which_critic']=="fitness_critic":
-            self.critic=fitnesscritic(self.num_asvs,"cpu",0)
+            self.critic=fitnesscritic(self.num_asvs,"cpu",0,self.config)
         else:
             self.critic=None
     # This makes it possible to pass evaluation to multiprocessing
@@ -211,8 +211,8 @@ class CooperativeCoevolutionaryAlgorithm():
         # Set up the enviornment
         env = deepcopy(self.clean_env)
         env.run(asv_policy_functions)
-        agent_rewards, G = env.rewards.compute(auvs=env.auvs, asvs=env.asvs)
-        rewards = tuple([(r,) for r in agent_rewards]+[(G,)])
+        agent_rewards, G, G_vec = env.rewards.compute(auvs=env.auvs, asvs=env.asvs)
+        rewards = tuple([(r,) for r in agent_rewards]+[G_vec]+[(G,)])
 
         return EvalInfo(
             rewards=rewards,
@@ -271,19 +271,19 @@ class CooperativeCoevolutionaryAlgorithm():
 
     def assignFitnessesWithCritic(self, teams, eval_infos):
         for team, eval in zip(teams, eval_infos):
-            trajectory=eval.joint_trajectory.obs_histories
+            trajectory=eval.joint_trajectory.obs_histories[0]
             for individual, traj,idx in zip(team.individuals, trajectory,range(len(team.individuals))):
-                traj = np.array(traj[0])
+                traj = np.array(traj)
                 individual.fitness_list.append(self.critic.evaluate(traj,idx))
 
     def criticAdd(self,teams,eval_infos):
         for team, eval in zip(teams, eval_infos):
-            trajectory=eval.joint_trajectory.obs_histories
-            rewards=eval.rewards
-            for r,traj,idx in zip(rewards, trajectory,range(len(team.individuals))):
-                traj = np.array(traj[0])
-                # r = np.array(r)
-                r = [1 for _ in traj]
+            trajectory=eval.joint_trajectory.obs_histories[0]
+            rewards=eval.rewards[-2]
+            for traj,idx in zip(trajectory,range(len(team.individuals))):
+                traj = np.array(traj)
+                r = np.array(rewards)
+                #r = [1 for _ in traj]
                 self.critic.add(traj,r,idx)
 
 
