@@ -1,5 +1,6 @@
 from copy import deepcopy
 import numpy as np
+from numba import jit
 
 def out_of_bounds(node, x_bound, y_bound):
     if node[0] >= x_bound or node[0] < 0:
@@ -19,8 +20,12 @@ def generate_steps(positionA, positionB, step_size):
     x_step = step_size * np.cos(theta)
     y_step = step_size * np.sin(theta)
     pts = [deepcopy(positionA)]
-    while step_size < np.linalg.norm(pts[-1]-positionB):
+    dist=pts[-1]-positionB
+    dist=dist[0]+dist[1]
+    while step_size < dist:
         pts.append( np.array([ pts[-1][0]+x_step, pts[-1][1]+y_step ]) )
+        dist=pts[-1]-positionB
+        dist=dist[0]+dist[1]
     if not np.allclose(pts[-1], positionB):
         pts.append(deepcopy(positionB))
     return pts
@@ -47,7 +52,7 @@ def determine_collisions(pts, connectivity_grid):
     return False, None
 
 # Make it so ping only works with line of sight
-def raycast(positionA, positionB, connectivity_grid, step_size):
+def raycast_slow(positionA, positionB, connectivity_grid, step_size):
     pts = generate_steps(positionA, positionB, step_size)
     # No collisions means we have line of sight
     collision, pt = determine_collisions(pts, connectivity_grid)
@@ -55,6 +60,46 @@ def raycast(positionA, positionB, connectivity_grid, step_size):
         return True, None
     else:
         return False, pt
+
+
+def raycast(positionA, positionB, connectivity_grid, step_size):
+    pt=raycast_helper(positionA[0],positionA[1],positionB[0],positionB[1],connectivity_grid)
+    if (pt==np.array([-100.0,-100.0])).all():
+        return True, None
+    else:
+        return False, pt
+
+@jit(nopython=True)
+def raycast_helper(ax, ay, bx, by, grid):
+    step = 0.5
+    dist_travelled = 0.0
+    dx = bx - ax
+    dy = by - ay
+    pt = np.array([-100.0, -100.0], dtype=np.float64)  # Predefine NumPy array with explicit dtype
+
+    r = np.sqrt(dx * dx + dy * dy)
+    if r==0:
+        return pt
+    dx /= r
+    dy /= r
+    rayx = ax
+    rayy = ay
+    
+    while dist_travelled < r:
+        dist_travelled += step
+        rayx += dx * step
+        rayy += dy * step
+        
+        # Ensure array indexing and comparison are separated
+        rayx_int = int(rayx)
+        rayy_int = int(rayy)
+        if rayx_int >= 0 and rayx_int < grid.shape[0] and rayy_int >= 0 and rayy_int < grid.shape[1]:
+            if grid[rayx_int, rayy_int] == 1:
+                pt[0] = rayx
+                pt[1] = rayy
+                return pt
+    return pt
+
 
 def line_of_sight(positionA, positionB, connectivity_grid, step_size):
     return raycast(positionA, positionB, connectivity_grid, step_size)[0]
