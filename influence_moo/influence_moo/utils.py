@@ -71,7 +71,7 @@ def raycast(positionA, positionB, connectivity_grid, step_size):
 
 @jit(nopython=True)
 def raycast_helper(ax, ay, bx, by, grid):
-    step = 0.5
+    step = 0.1
     dist_travelled = 0.0
     dx = bx - ax
     dy = by - ay
@@ -84,12 +84,12 @@ def raycast_helper(ax, ay, bx, by, grid):
     dy /= r
     rayx = ax
     rayy = ay
-    
+
     while dist_travelled < r:
         dist_travelled += step
         rayx += dx * step
         rayy += dy * step
-        
+
         # Ensure array indexing and comparison are separated
         rayx_int = int(rayx)
         rayy_int = int(rayy)
