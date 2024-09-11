@@ -1,4 +1,4 @@
-root_dir: ~/programs/influence-multi-objective
+root_dir: ~/influence-multi-objective
 env:
   dt: 1
   collision_step_size: 0.1
@@ -14,7 +14,7 @@ env:
     num_obstacle_traces: 8
   auv:
     max_speed: 1.0
-  mission_dir: ~/programs/influence-multi-objective/example_results/mission
+  mission_dir: ~/influence-multi-objective/example_results/mission
   t_final: 5
   pois:
     - {value: 1.0, observation_radius: 5.0}
