@@ -1,0 +1,17 @@
+{
+	"version": "2.0.0",
+	"tasks": [
+		{
+			"label": "profile code",
+			"type": "shell",
+			"command": "python3 -m cProfile -o program.prof ./influence_moo/influence_moo/run_cli.py ./example_results/config.yaml",
+			"problemMatcher": []
+		},
+		{
+			"label": "profile view",
+			"type": "shell",
+			"command": "snakeviz program.prof",
+			"problemMatcher": []
+		}
+	]
+}
