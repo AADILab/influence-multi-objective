@@ -94,10 +94,16 @@ def raycast_helper(ax, ay, bx, by, grid):
         rayx_int = int(rayx)
         rayy_int = int(rayy)
         if rayx_int >= 0 and rayx_int < grid.shape[0] and rayy_int >= 0 and rayy_int < grid.shape[1]:
-            if grid[rayx_int, rayy_int] == 1:
+            if grid[rayx_int, rayy_int] == 0:
                 pt[0] = rayx
                 pt[1] = rayy
                 return pt
+        # Out of bounds counts as colliding with a point
+        elif rayx_int < 0 or rayx_int >= grid.shape[0] or rayy_int < 0 or rayy_int >= grid.shape[1]:
+            pt[0] = rayx
+            pt[1] = rayy
+            return pt
+
     return pt
 
 
