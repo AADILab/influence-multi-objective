@@ -352,7 +352,7 @@ class Rewards():
             ]
             # Compute counterfactual G with the influence of asv j removed
             counterfactual_G_j_list = [
-                self.global_(auvs_minus_j, asvs_minus_j) for auvs_minus_j, asvs_minus_j in zip(auvs_minus_j_list, asvs_minus_j_list)
+                self.global_(auvs_minus_j, asvs_minus_j)[0] for auvs_minus_j, asvs_minus_j in zip(auvs_minus_j_list, asvs_minus_j_list)
             ]
             if self.asv_reward == "indirect_difference_team":
                 # Finally compute an indirect difference reward with these counterfactual paths
@@ -370,7 +370,7 @@ class Rewards():
             auvs_minus_i_list = [remove_agent(auvs, auv_ind) for auv_ind in range(len(auvs))]
             # Counterfactual G for each removed auv
             counterfactual_G_remove_i_list = [
-                self.global_(auvs=auvs_minus_i, asvs=asvs) for auvs_minus_i in auvs_minus_i_list
+                self.global_(auvs=auvs_minus_i, asvs=asvs)[0] for auvs_minus_i in auvs_minus_i_list
             ]
             # Compute D for each auv
             auv_rewards = [
@@ -389,7 +389,7 @@ class Rewards():
                         remove_agent(auvs_minus_j, auv_ind) for auvs_minus_j in auvs_minus_j_list
                     ]
                     counterfactual_G_ij_list = [
-                        self.global_(auvs_minus_ij, asvs_minus_j) for auvs_minus_ij, asvs_minus_j in zip(auvs_minus_ij_list, asvs_minus_j_list)
+                        self.global_(auvs_minus_ij, asvs_minus_j)[0] for auvs_minus_ij, asvs_minus_j in zip(auvs_minus_ij_list, asvs_minus_j_list)
                     ]
                     difference_ij_list = [
                         G_j - G_ij for G_j, G_ij in zip(counterfactual_G_j_list, counterfactual_G_ij_list)
