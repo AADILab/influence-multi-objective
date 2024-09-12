@@ -2,7 +2,7 @@ import os
 from copy import deepcopy
 import numpy as np
 from pathlib import Path
-from influence_moo.utils import out_of_bounds, determine_collision, line_of_sight
+from influence_moo.utils import out_of_bounds, determine_collision, line_of_sight, raycast
 from influence_moo.env.mission import Mission
 
 class AUV():
@@ -44,12 +44,7 @@ class AUV():
             if self.target_id < len(self.targets)-1:
                 # New target
                 self.target_id += 1
-            # Otherwise, I have reached my last target, and it is time to surface
-            else:
-                self.surfaced = True
-                # Now that I have surfaced,
-                # I can use my GPS and no longer have uncertainty about my position
-                self.h_position = self.position
+            # Otherwise, I have reached my last target, and will stay there
 
         # Return the action the auv took
         return delta
@@ -72,7 +67,7 @@ class ASV():
 
     def ping(self):
         for auv in self.auvs:
-            if line_of_sight(self.position, auv.position, self.connectivity_grid, 0.1):
+            if not auv.crashed and line_of_sight(self.position, auv.position, self.connectivity_grid, 0.1):
                 auv.h_position = deepcopy(auv.position)
 
 class POI():
@@ -98,6 +93,7 @@ class Rewards():
         TODO: Counterfactual influence vs local influence
         influence_heuristic: line_of_sight, distance_threshold
         influence_type: all_or_nothing, granular
+        trajectory_influence_threshold: 0.0 (float). ASV must influence AUV more than this threshold accross the AUV's trajectory for the ASV to be eligible for getting credit for this AUV
         auv_reward: global, local, difference
         asv_reward: global, local, difference, indirect_difference
         multi_reward: single, multiple
@@ -108,6 +104,7 @@ class Rewards():
 
         self.influence_heuristic = config['rewards']['influence_heuristic']
         self.influence_type = config['rewards']['influence_type']
+        self.trajectory_influence_threshold = config['rewards']['trajectory_influence_threshold']
         self.auv_reward = config['rewards']['auv_reward']
         self.asv_reward = config['rewards']['asv_reward']
         self.multi_reward = config['rewards']['multi_reward']
@@ -145,32 +142,68 @@ class Rewards():
 
         # Go through paths and determine which auv was closest to each poi
         for auv_ind, auv in enumerate(auvs):
-            # This auv only counts if it didn't crash
-            if not auv.crashed:
-                for auv_position in auv.path:
-                    for poi_ind, poi in enumerate(self.pois):
-                        # Make sure auv was not counterfactually removed
-                        if not np.isnan(auv_position[0]) and not np.isnan(auv_position[1]):
-                            # Check line of sight
-                            if line_of_sight(auv_position, poi.position, self.connectivity_grid, self.collision_step_size):
-                                distance = np.linalg.norm(auv_position - poi.position)
-                                if distance < nearest_auvs[poi_ind].distance:
-                                    nearest_auvs[poi_ind] = AUVInfo(auv_ind=auv_ind, distance = distance, position = deepcopy(auv_position))
+            for auv_position in auv.path:
+                for poi_ind, poi in enumerate(self.pois):
+                    # Make sure auv was not counterfactually removed
+                    if not np.isnan(auv_position[0]) and not np.isnan(auv_position[1]):
+                        # Check line of sight
+                        if line_of_sight(auv_position, poi.position, self.connectivity_grid, self.collision_step_size):
+                            distance = np.linalg.norm(auv_position - poi.position)
+                            if distance < nearest_auvs[poi_ind].distance:
+                                nearest_auvs[poi_ind] = AUVInfo(auv_ind=auv_ind, distance = distance, position = deepcopy(auv_position))
 
         return nearest_auvs
 
-    def global_(self, auvs):
-        """Global reward for entire team"""
-        # We need to go through the paths and determine which auv was closest to each poi
-        nearest_auvs = self.get_nearest_auvs(auvs)
+    # def global_step_(self, auvs, asvs):
 
-        # Now let's compute the value of the observations
-        reward = 0
-        for poi, auv_info in zip(self.pois, nearest_auvs):
-            # Make sure this poi was observed
-            if auv_info.auv_ind is not None and auv_info.distance < poi.observation_radius:
-                reward += 1./np.max((auv_info.distance, 1.)) * poi.value
-        return reward
+    @staticmethod
+    def position_removed(position):
+        if np.isnan(position[0]) or np.isnan(position[1]):
+            return True
+        else:
+            return False
+
+    def global_(self, auvs, asvs):
+        # TODO: Return a vector of G_steps when using a fitness critic
+        """Global reward for entire team"""
+        # Get path lengths
+        num_steps = len(auvs[0].path)
+        for agent in (auvs+asvs)[1:]:
+            if len(agent.path) != num_steps:
+                raise Exception("Agents have different length paths")
+
+        G_total = 0
+        G_vec=[]
+        for i in range(num_steps):
+            # Compute a step-wise reward
+
+            # Initialize storage for which auv was closest to each poi
+            nearest_auvs = [AUVInfo(auv_ind=None, distance=np.inf, position=None) for _ in self.pois]
+
+            # Now figure out which auv was closest
+            for auv_ind, auv in enumerate(auvs):
+                for poi_ind, poi in enumerate(self.pois):
+                    # Make sure auv was not counterfactually removed or crash
+                    if not self.position_removed(auv.path[i]) and not auv.crash_history[i]:
+                        # Check line of sight
+                        if line_of_sight(auv.path[i], poi.position, self.connectivity_grid, self.collision_step_size):
+                            # Update nearest AUV for this poi
+                            distance = np.linalg.norm(auv.path[i] - poi.position)
+                            if distance < nearest_auvs[poi_ind].distance:
+                                nearest_auvs[poi_ind] = AUVInfo(auv_ind=auv_ind, distance = distance, position = deepcopy(auv.path[i]))
+
+            # Compute the value of the observations
+            G_step = 0
+            for poi, auv_info in zip(self.pois, nearest_auvs):
+                # Make sure this POI was observed
+                if auv_info.auv_ind is not None and auv_info.distance <= poi.observation_radius:
+                    G_step += 1./np.max((auv_info.distance, 1.)) * poi.value
+
+            # Add this step-wise reward to the trajectory reward
+            G_total += G_step
+            G_vec.append(G_step)
+
+        return G_total,G_vec
 
     def difference(self, auvs, auv_ind, team_reward):
         """Difference reward for a single AUV"""
@@ -248,24 +281,25 @@ class Rewards():
         """
         influence_heuristic: line_of_sight, distance_threshold
         influence_type: all_or_nothing, granular
+        trajectory_influence_threshold: 0.0 (float)
         auv_reward: global, local, difference
         asv_reward: global, local, difference, indirect_difference_team, indirect_difference_auv
         multi_reward: single, multiple
         """
         # Compute global reward
-        G = self.global_(auvs=auvs)
+        G,G_vec = self.global_(auvs=auvs, asvs=asvs)
 
         # Global reward for ASVs
         if self.asv_reward == "global":
-            return [G for asv in asvs], G
+            return [G for asv in asvs], G ,G_vec
         # Local reward for ASVs
         elif self.asv_reward == "local":
-            return [self.local_asv_reward(auvs=auvs, asv=asv) for asv in asvs], G
+            return [self.local_asv_reward(auvs=auvs, asv=asv) for asv in asvs], G ,G_vec
         # Difference reward for ASVs
         elif self.asv_reward == "difference":
             # Removing an ASV's path does not actually change G
             # Hence, the difference reward is always 0.0
-            return [0.0 for asv in asvs], G
+            return [0.0 for asv in asvs], G ,G_vec
         # Indirect difference reward for ASVs based on indirect contribution to team
         elif self.asv_reward == "indirect_difference_team" or self.asv_reward == "indirect_difference_auv":
             # Create influence array that tells us how much each AUV was influenced
@@ -282,19 +316,49 @@ class Rewards():
             influence_j_list = [
                 influence_array - counterfactual_influence for counterfactual_influence in counterfactual_influence_list
             ]
+            if self.influence_type == "all_or_nothing":
+                # Create an influence vector for each auv of how much each avs influenced it
+                auv_arrs = [np.zeros((len(asvs),)) for auv in auvs]
+                for i in range(len(auvs)):
+                    for j, influence_j in enumerate(influence_j_list):
+                        # Total up influence of this asv on this auv
+                        auv_arrs[i][j] = np.sum(influence_j[:,i])
+
+                # Choose which asv gets credit for each auv's actions
+                asv_inds = []
+                for auv_arr in auv_arrs:
+                    best_influence = None
+                    best_asv_ind = None
+                    for asv_ind, asv_influence in enumerate(auv_arr):
+                        if (best_asv_ind is None and asv_influence > self.trajectory_influence_threshold) \
+                            or (best_asv_ind is not None and asv_influence > best_influence):
+                            best_asv_ind = asv_ind
+                            best_influence = asv_influence
+
+                    asv_inds.append(best_asv_ind)
+
+                # Turn this back into an influence array. One for each asv
+                num_steps = len(auvs[0].path)
+                num_auvs = len(auvs)
+                influence_j_list = [np.zeros((num_steps, num_auvs)) for asv in asvs]
+                for auv_ind, asv_ind in enumerate(asv_inds):
+                    if asv_ind is not None:
+                        # Get index of asv. The influence of that asv across the entire path for that auv...
+                        influence_j_list[asv_ind][:, auv_ind] = 1.0
+
             # Create counterfactual AUV paths with the influence of asv j removed
             auvs_minus_j_list = [
                 self.remove_influence(auvs, influence_j) for influence_j in influence_j_list
             ]
             # Compute counterfactual G with the influence of asv j removed
             counterfactual_G_j_list = [
-                self.global_(auvs_minus_j) for auvs_minus_j in auvs_minus_j_list
+                self.global_(auvs_minus_j, asvs_minus_j)[0] for auvs_minus_j, asvs_minus_j in zip(auvs_minus_j_list, asvs_minus_j_list)
             ]
             if self.asv_reward == "indirect_difference_team":
                 # Finally compute an indirect difference reward with these counterfactual paths
                 return [
                     G-counterfactual_G for counterfactual_G in counterfactual_G_j_list
-                ], G
+                ], G ,G_vec
 
         # Rewards for AUVs that will be used to derive ASV rewards
         if self.auv_reward == "global":
@@ -306,7 +370,7 @@ class Rewards():
             auvs_minus_i_list = [remove_agent(auvs, auv_ind) for auv_ind in range(len(auvs))]
             # Counterfactual G for each removed auv
             counterfactual_G_remove_i_list = [
-                self.global_(auvs=auvs_minus_i) for auvs_minus_i in auvs_minus_i_list
+                self.global_(auvs=auvs_minus_i, asvs=asvs)[0] for auvs_minus_i in auvs_minus_i_list
             ]
             # Compute D for each auv
             auv_rewards = [
@@ -325,7 +389,7 @@ class Rewards():
                         remove_agent(auvs_minus_j, auv_ind) for auvs_minus_j in auvs_minus_j_list
                     ]
                     counterfactual_G_ij_list = [
-                        self.global_(auvs_minus_ij) for auvs_minus_ij in auvs_minus_ij_list
+                        self.global_(auvs_minus_ij, asvs_minus_j)[0] for auvs_minus_ij, asvs_minus_j in zip(auvs_minus_ij_list, asvs_minus_j_list)
                     ]
                     difference_ij_list = [
                         G_j - G_ij for G_j, G_ij in zip(counterfactual_G_j_list, counterfactual_G_ij_list)
@@ -340,9 +404,9 @@ class Rewards():
                     for i in range(len(asvs)):
                         asv_rewards[i][j] = decomposed_auv_rewards[j][i]
                 if self.multi_reward == "multiple":
-                    return asv_rewards, G
+                    return asv_rewards, G ,G_vec
                 elif self.multi_reward == "single":
-                    return [sum(rewards_per_asv) for rewards_per_asv in asv_rewards], G
+                    return [sum(rewards_per_asv) for rewards_per_asv in asv_rewards], G ,G_vec
 
 class OceanEnv():
     def __init__(self, config):
@@ -357,6 +421,12 @@ class OceanEnv():
         self.asv_max_speed = ec['asv']['max_speed']
         self.auv_max_speed = ec['asv']['max_speed']
         self.collision_step_size = ec['collision_step_size']
+        self.asv_observation_type = ec['asv']['observation_type']
+        self.asv_raytrace_distance = ec['asv']['raytrace_distance']
+        self.num_asv_bins = ec['asv']['num_asv_bins']
+        self.num_auv_bins = ec['asv']['num_auv_bins']
+        self.num_obstacle_traces = ec['asv']['num_obstacle_traces']
+
         self.pois = []
         for poi_position, poi_config in zip(self.mission.pois, ec['pois']):
             self.pois.append(POI(position=poi_position, value=poi_config['value'], observation_radius=poi_config['observation_radius']))
@@ -364,37 +434,103 @@ class OceanEnv():
 
     def get_asv_observation(self, asv_ind):
         # ASV has access to some but NOT ALL global state information
-        observation = [self.asvs[asv_ind].position[0], self.asvs[asv_ind].position[1]]
-        other_asvs = remove_agent(self.asvs, asv_ind)
-        for asv in other_asvs:
-            observation.append(asv.position[0])
-            observation.append(asv.position[1])
-        for auv in self.auvs:
-            # ASV has the same hypothesis about where AUVs are
-            observation.append(auv.h_position[0])
-            observation.append(auv.h_position[1])
-        observation = np.array(observation)
-        observation = np.concatenate([observation, self.mission.connectivity_grid.flatten()])
-        return observation
+        """
+        Note for development: Agent centric observations
+        observations are like delta x's to other agents (more informative)
+        cares about how far things are from itself (most likely)
+        map information - raycast in 8 directions that probe how far a wall is (like a lidar)
+        and that gives a lower dimensional representation but still a useful one
+        """
+        if self.asv_observation_type == 'global':
+            observation = [self.asvs[asv_ind].position[0], self.asvs[asv_ind].position[1]]
+            other_asvs = remove_agent(self.asvs, asv_ind)
+            for asv in other_asvs:
+                observation.append(asv.position[0])
+                observation.append(asv.position[1])
+            for auv in self.auvs:
+                # ASV has the same hypothesis about where AUVs are
+                observation.append(auv.h_position[0])
+                observation.append(auv.h_position[1])
+            observation = np.array(observation)
+            return observation
+        elif self.asv_observation_type == 'local':
+            observation = []
+
+            # Raytracing for obstacles
+            for i in range(self.num_obstacle_traces):
+                angle = 2*np.pi * i/float(self.num_obstacle_traces)
+                pos = self.asvs[asv_ind].position + np.array([self.asv_raytrace_distance * np.cos(angle), self.asv_raytrace_distance * np.sin(angle)])
+                sight, pt = raycast(self.asvs[asv_ind].position, pos, self.mission.connectivity_grid, self.collision_step_size)
+                if not sight:
+                    # The ray hit a point. Get distance to that point
+                    observation.append(np.linalg.norm(self.asvs[asv_ind].position - pt))
+                else:
+                    # No collisions. Use max distance
+                    observation.append(self.asv_raytrace_distance)
+
+            # Binning for other ASVs
+            bins = [[] for _ in range(self.num_asv_bins)]
+            angle_increment = 2*np.pi / self.num_asv_bins
+            other_asvs = remove_agent(self.asvs, asv_ind)
+            for asv in other_asvs:
+                if line_of_sight(self.asvs[asv_ind].position, asv.position, self.mission.connectivity_grid, self.collision_step_size):
+                    # Bin the ASV if it's in line of sight
+                    y = asv.position[1] - self.asvs[asv_ind].position[1]
+                    x = asv.position[0] - self.asvs[asv_ind].position[0]
+                    angle = np.arctan2(y, x)
+                    bin_num = int(angle / angle_increment)
+                    if bin_num == len(bins):
+                        bin_num -= 1
+                    distance = np.linalg.norm(self.asvs[asv_ind].position - asv.position)
+                    bins[bin_num].append(distance)
+            # Turn bins into observations
+            for bin in bins:
+                if len(bin) > 0:
+                    observation.append(min(bin))
+                else:
+                    observation.append(-1)
+
+            # Binning for AUVs
+            bins = [[] for _ in range(self.num_auv_bins)]
+            angle_increment = 2*np.pi / self.num_auv_bins
+            for auv in self.auvs:
+                if line_of_sight(self.asvs[asv_ind].position, auv.position, self.mission.connectivity_grid, self.collision_step_size):
+                    # Bin the ASV if it's in line of sight
+                    y = auv.position[1] - self.asvs[asv_ind].position[1]
+                    x = auv.position[0] - self.asvs[asv_ind].position[0]
+                    angle = np.arctan2(y, x)
+                    bin_num = int(angle / angle_increment)
+                    if bin_num == len(bins):
+                        bin_num -= 1
+                    distance = np.linalg.norm(self.asvs[asv_ind].position - auv.position)
+                    bins[bin_num].append(distance)
+            # Turn bins into observations
+            for bin in bins:
+                if len(bin) > 0:
+                    observation.append(min(bin))
+                else:
+                    observation.append(-1)
+
+            return observation
 
     def step(self):
         # Ping auvs
         for asv in self.asvs:
-            asv.ping()
+            if not asv.crashed:
+                asv.ping()
 
         # Move asvs first
         for asv_ind, asv in enumerate(self.asvs):
             # Placeholder action
             asv_velocity = np.array([0.,0.])
-            asv_observation = np.zeros(2*len(self.asvs)+2*len(self.auvs)+self.mission.connectivity_grid.size)
+            asv_observation = np.zeros(2*len(self.asvs)+2*len(self.auvs))
             if not asv.crashed:
                 asv_observation = self.get_asv_observation(asv_ind)
                 asv_velocity = asv.policy(asv_observation)
-                new_position = asv.position + asv_velocity*self.dt
-                if not out_of_bounds(new_position, self.mission.connectivity_grid.shape[0], self.mission.connectivity_grid.shape[1]):
-                    asv.position += asv_velocity*self.dt
+                asv.position += asv_velocity*self.dt
 
-            if determine_collision(asv.position, self.mission.connectivity_grid):
+            if out_of_bounds(asv.position, self.mission.connectivity_grid.shape[0], self.mission.connectivity_grid.shape[1]) \
+                or determine_collision(asv.position, self.mission.connectivity_grid):
                 asv.crashed = True
 
             asv.path.append(deepcopy(asv.position))
@@ -409,12 +545,14 @@ class OceanEnv():
             # Wave moves auv
             if not auv.crashed:
                 auv.position += np.array([ self.mission.wave_x(auv.position[0])*self.dt, self.mission.wave_y(auv.position[1])*self.dt ])
-            if determine_collision(auv.position, self.mission.connectivity_grid):
+            if out_of_bounds(auv.position, self.mission.connectivity_grid.shape[0], self.mission.connectivity_grid.shape[1]) \
+                or determine_collision(auv.position, self.mission.connectivity_grid):
                 auv.crashed = True
             # auv acts based on hypothesis position
             if not auv.crashed:
                 auv_action = auv.update(self.dt)
-            if determine_collision(auv.position, self.mission.connectivity_grid):
+            if out_of_bounds(auv.position, self.mission.connectivity_grid.shape[0], self.mission.connectivity_grid.shape[1]) \
+                or determine_collision(auv.position, self.mission.connectivity_grid):
                 auv.crashed = True
 
             auv.path.append(deepcopy(auv.position))
@@ -429,13 +567,21 @@ class OceanEnv():
 
         self.asvs = [
             ASV(
-                position=self.mission.root_node[0].astype(float),
+                position=start_position.astype(float),
                 auvs=self.auvs,
                 connectivity_grid=self.mission.connectivity_grid,
                 policy_function=policy_func
             )
-            for policy_func in asv_policy_functions
+            for start_position ,policy_func in zip(self.mission.asv_start_positions, asv_policy_functions)
         ]
 
         for _ in range(self.num_iterations):
             self.step()
+
+        # Add final observations
+        for asv_ind, asv in enumerate(self.asvs):
+            # Just get the observation
+            asv_observation = np.zeros(2*len(self.asvs)+2*len(self.auvs))
+            if not asv.crashed:
+                asv_observation = self.get_asv_observation(asv_ind)
+            asv.observation_history.append(asv_observation)

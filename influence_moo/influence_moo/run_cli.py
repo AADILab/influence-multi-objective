@@ -10,6 +10,12 @@ if __name__ == "__main__":
         epilog=""
     )
     parser.add_argument("config_dir")
+    parser.add_argument(
+        '-t', '--num_trial',         # The flags for the optional argument
+        type=int,                 # Specify the type of the argument (optional)
+        help='Number of trial to run. Defaults to running all trials if none is specified.',  # Description of the argument
+        default=None   # Provide a default value (optional)
+    )
     args = parser.parse_args()
 
-    runCCEA(args.config_dir)
+    runCCEA(args.config_dir, args.num_trial)

@@ -28,26 +28,33 @@ def plot_vectors(vectors, ax=None, *args, **kwargs):
 
 # High level convenience plotting functions
 
-def plot_mission(mission, ax=None):
+def plot_mission(mission, ax=None, include_waves=True):
     plot_grid(mission.connectivity_grid, ax, cmap='tab10_r')
-    plot_pts(mission.root_node, ax, '+', color='orange')
-    plot_pts(mission.pathA, ax, ls=(0, (1,2)), color='pink', lw=1)
-    plot_pts(mission.pathB, ax, ls='dashed', color='purple', lw=1)
-    plot_pts(mission.pathC, ax, ls='dashdot', color='tab:cyan', lw=1)
-    plot_pts(mission.pathD, ax, ls=(0, (1,3)), color='tab:orange', lw=1)
+    for asv_start_position in mission.asv_start_positions:
+        plot_pts(np.array([asv_start_position]), ax, '+', color='orange')
+    colors = ['pink', 'purple', 'tab:cyan', 'tab:orange']
+    ls_l = [(0,(1,2)), 'dashed', 'dashdot', (0,(1,3))]
+    for i, path in enumerate(mission.paths):
+        plot_pts(path, ax, ls=ls_l[i%len(ls_l)], color=colors[i%len(colors)], lw=1)
     plot_pts(mission.pois, ax, marker='o', fillstyle='none', linestyle='none',color='tab:green')
-    wave_vectors = sample_waves(mission.connectivity_grid, 75, 75, mission.wave_x, mission.wave_y)
-    plot_vectors(wave_vectors, ax, color='navy',lw=0.3)
+    if include_waves:
+        wave_vectors = sample_waves(mission.connectivity_grid, 75, 75, mission.wave_x, mission.wave_y)
+        plot_vectors(wave_vectors, ax, color='navy',lw=0.3)
+    if ax is not None:
+        ax.set_xlim([0,mission.connectivity_grid.shape[0]])
+        ax.set_ylim([0,mission.connectivity_grid.shape[1]])
+    else:
+        plt.xlim([0, mission.connectivity_grid.shape[0]])
+        plt.ylim([0, mission.connectivity_grid.shape[1]])
 
-def plot_rollout(env, ax=None):
+def plot_rollout(env, ax=None,include_waves=True):
     plot_grid(env.mission.connectivity_grid, ax, cmap='tab10_r')
 
     plot_pts(env.mission.pois, ax, marker='o', fillstyle='none', linestyle='none',color='tab:green')
 
-    plot_pts(np.array(env.auvs[0].path), ax, ls='solid', color='pink', lw=0.5)
-    plot_pts(np.array(env.auvs[1].path), ax, ls='solid', color='purple', lw=0.5)
-    plot_pts(np.array(env.auvs[2].path), ax, ls='solid', color='tab:cyan', lw=0.5)
-    plot_pts(np.array(env.auvs[3].path), ax, ls='solid', color='tab:orange', lw=0.5)
+    colors = ['pink', 'purple', 'tab:cyan', 'tab:orange']
+    for i, auv in enumerate(env.auvs):
+        plot_pts(np.array(auv.path), ax, ls='solid', color=colors[i%len(colors)], lw=0.5)
 
     for asv in env.asvs:
         plot_pts(np.array(asv.path), ax, ls='solid', color='magenta', lw=0.5)
@@ -60,5 +67,6 @@ def plot_rollout(env, ax=None):
         if asv.crashed:
             plot_pts(np.array([asv.position]), ax, 'x', color='tab:red')
 
-    wave_vectors = sample_waves(env.mission.connectivity_grid, 75, 75, env.mission.wave_x, env.mission.wave_y)
-    plot_vectors(wave_vectors, ax, color='navy', lw=0.3)
+    if include_waves:
+        wave_vectors = sample_waves(env.mission.connectivity_grid, 75, 75, env.mission.wave_x, env.mission.wave_y)
+        plot_vectors(wave_vectors, ax, color='navy', lw=0.3)

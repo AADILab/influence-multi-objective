@@ -16,11 +16,13 @@ from tqdm import tqdm
 
 from influence_moo.evo.network import NeuralNetwork
 from influence_moo.env.env import OceanEnv
+from influence_moo.critic.align import align
+from influence_moo.critic.fitnesscritic import fitnesscritic
 
 class JointTrajectory():
     def __init__(
             self, auv_paths, auv_hpaths, auv_actions, auv_crash_histories, auv_surface_histories,
-            asv_paths, asv_actions, asv_crash_histories
+            asv_paths, asv_actions, asv_crash_histories,obs_histories
         ):
         self.auv_paths = auv_paths
         self.auv_hpaths = auv_hpaths
@@ -31,11 +33,19 @@ class JointTrajectory():
         self.asv_paths = asv_paths
         self.asv_actions = asv_actions
         self.asv_crash_histories = asv_crash_histories
+        self.obs_histories=obs_histories
 
 class EvalInfo():
     def __init__(self, rewards, joint_trajectory):
+        # -1 index is the global reward(s) [scalar for shaping, vector for fitness critic]
+        # other indicies are for individual agent rewards
         self.rewards = rewards
         self.joint_trajectory = joint_trajectory
+
+class TeamInfo():
+    def __init__(self, individuals, ids):
+        self.individuals = individuals
+        self.ids = ids
 
 class CooperativeCoevolutionaryAlgorithm():
     def __init__(self, config_dir):
@@ -45,13 +55,12 @@ class CooperativeCoevolutionaryAlgorithm():
         with open(str(self.config_dir), 'r') as file:
             self.config = yaml.safe_load(file)
 
-        self.num_asvs = self.config['env']['num_asvs']
-
         self.subpopulation_size = self.config['ccea']['subpopulation_size']
         self.n_elites = self.config["ccea"]["selection"]["n_elites_binary_tournament"]["n_elites"]
         self.include_elites_in_tournament = self.config["ccea"]["selection"]["n_elites_binary_tournament"]["include_elites_in_tournament"]
         self.num_mutants = self.subpopulation_size - self.n_elites
-        self.num_evaluations_per_team = self.config["ccea"]["evaluation"]["multi_evaluation"]["num_evaluations_per_team"]
+        self.num_rollouts_per_team = self.config["ccea"]["evaluation"]["multi_evaluation"]["num_rollouts_per_team"]
+        self.num_teams_per_evaluation = self.config["ccea"]["evaluation"]["multi_evaluation"]["num_teams_per_evaluation"]
 
         self.use_multiprocessing = self.config["processing"]["use_multiprocessing"]
         self.num_threads = self.config["processing"]["num_threads"]
@@ -75,11 +84,18 @@ class CooperativeCoevolutionaryAlgorithm():
         # deepcopy this attribute so we always have a clean one
         self.clean_env = OceanEnv(self.config)
         self.num_auvs = len(self.clean_env.mission.paths)
+        self.num_asvs = len(self.clean_env.mission.asv_start_positions)
         self.num_pois = len(self.clean_env.mission.pois)
 
         # For neural network calculations
-        self.nn_template = self.generateTemplateNeuralNetwork(num_hidden=self.config['env']['asv']['network']['num_hidden'])
+        self.nn_template = self.generateTemplateNeuralNetwork()
 
+        if self.config['rewards']['which_critic']=="alignment":
+            self.critic=align(self.num_asvs,"cpu",2,self.config)
+        elif self.config['rewards']['which_critic']=="fitness_critic":
+            self.critic=fitnesscritic(self.num_asvs,"cpu",0,self.config)
+        else:
+            self.critic=None
     # This makes it possible to pass evaluation to multiprocessing
     # Without this, the pool tries to pickle the entire object, including itself
     # which it cannot do
@@ -92,12 +108,15 @@ class CooperativeCoevolutionaryAlgorithm():
     def __setstate__(self, state):
         self.__dict__.update(state)
 
-    def generateTemplateNeuralNetwork(self, num_hidden):
+    def generateTemplateNeuralNetwork(self):
+        asv_config = self.config['env']['asv']
+        if asv_config['observation_type'] == 'global':
+            num_inputs = 2*self.num_asvs+2*len(self.clean_env.mission.paths)
+        elif asv_config['observation_type'] == 'local':
+            num_inputs = asv_config['num_asv_bins']+asv_config['num_auv_bins']+asv_config['num_obstacle_traces']
         agent_nn = NeuralNetwork(
-            num_inputs=2*self.num_asvs+\
-                2*len(self.clean_env.mission.paths)+\
-                self.clean_env.mission.connectivity_grid.size,
-            num_hidden=num_hidden,
+            num_inputs=num_inputs,
+            num_hidden=asv_config['network']['num_hidden'],
             num_outputs=2
         )
         return agent_nn
@@ -106,7 +125,9 @@ class CooperativeCoevolutionaryAlgorithm():
         return random.uniform(self.config["ccea"]["weight_initialization"]["lower_bound"], self.config["ccea"]["weight_initialization"]["upper_bound"])
 
     def generateIndividual(self, individual_size):
-        return tools.initRepeat(creator.Individual, self.generateWeight, n=individual_size)
+        ind = tools.initRepeat(creator.Individual, self.generateWeight, n=individual_size)
+        ind.fitness_list = []
+        return ind
 
     def generateAsvIndividual(self):
         return self.generateIndividual(individual_size=self.nn_template.num_weights)
@@ -121,42 +142,51 @@ class CooperativeCoevolutionaryAlgorithm():
         return tools.initRepeat(list, self.generateAsvSubpopulation, n=self.num_asvs)
 
     def formEvaluationTeam(self, population):
-        eval_team = []
+        eval_team_individuals = []
+        inds = []
         for subpop in population:
             # Use max with a key function to get the individual with the highest fitness[0] value
             best_ind = max(subpop, key=lambda ind: ind.fitness.values[0])
-            eval_team.append(best_ind)
-        return eval_team
+            eval_team_individuals.append(best_ind)
+            inds.append(best_ind)
+        return TeamInfo(eval_team_individuals, inds)
 
     def evaluateEvaluationTeam(self, population):
         # Create evaluation team
         eval_team = self.formEvaluationTeam(population)
         # Evaluate that team however many times we are evaluating teams
-        eval_teams = [eval_team for _ in range(self.num_evaluations_per_team)]
+        eval_teams = [eval_team for _ in range(self.num_rollouts_per_team)]
         return self.evaluateTeams(eval_teams)
 
-    def formTeams(self, population, inds=None):
+    def formTeams(self, population):
         # Start a list of teams
         teams = []
 
-        if inds is None:
-            team_inds = range(self.subpopulation_size)
-        else:
-            team_inds = inds
-
-        # For each individual in a subpopulation
-        for i in team_inds:
-            # Make a team
-            team = []
-            # For each subpopulation in the population
+        for _ in range(self.num_teams_per_evaluation):
+            # Generate shuffled ids for each subpopulation
+            pop_ids = []
             for subpop in population:
-                # Put the i'th indiviudal on the team
-                team.append(subpop[i])
-            # Need to save that team for however many evaluations
-            # we're doing per team
-            for _ in range(self.num_evaluations_per_team):
-                # Save that team
-                teams.append(team)
+                sub_ids = list(range(len(subpop)))
+                random.shuffle(sub_ids)
+                pop_ids.append(sub_ids)
+
+            # Iterate through the team ids in these shuffled ids
+            # Each set of ids in the same index makes a team
+            for t_ids in zip(*pop_ids):
+                team_ids = list(t_ids)
+                team_individuals = []
+                for id_, subpop in zip(team_ids, population):
+                    team_individuals.append(subpop[id_])
+
+                team = TeamInfo(
+                    individuals=team_individuals,
+                    ids=team_ids
+                )
+
+                # Duplicate a team for however many rollouts
+                # we'd like to do for one team
+                for _ in range(self.num_rollouts_per_team):
+                    teams.append(team)
 
         return teams
 
@@ -168,12 +198,12 @@ class CooperativeCoevolutionaryAlgorithm():
             eval_infos = list(self.map(self.evaluateTeam, teams))
         return eval_infos
 
-    def evaluateTeam(self, team, compute_team_fitness=True):
+    def evaluateTeam(self, team):
         # Set up networks
         asv_nns = [deepcopy(self.nn_template) for _ in range(self.num_asvs)]
 
         # Load in the weights
-        for asv_nn, individual in zip(asv_nns, team):
+        for asv_nn, individual in zip(asv_nns, team.individuals):
             asv_nn.setWeights(individual)
 
         asv_policy_functions = [asv_nn.forward for asv_nn in asv_nns]
@@ -181,8 +211,8 @@ class CooperativeCoevolutionaryAlgorithm():
         # Set up the enviornment
         env = deepcopy(self.clean_env)
         env.run(asv_policy_functions)
-        agent_rewards, G = env.rewards.compute(auvs=env.auvs, asvs=env.asvs)
-        rewards = tuple([(r,) for r in agent_rewards]+[(G,)])
+        agent_rewards, G, G_vec = env.rewards.compute(auvs=env.auvs, asvs=env.asvs)
+        rewards = tuple([(r,) for r in agent_rewards]+[G_vec]+[(G,)])
 
         return EvalInfo(
             rewards=rewards,
@@ -194,7 +224,8 @@ class CooperativeCoevolutionaryAlgorithm():
                 auv_surface_histories = [auv.surface_history for auv in env.auvs],
                 asv_paths = [asv.path for asv in env.asvs],
                 asv_actions = [asv.action_history for asv in env.asvs],
-                asv_crash_histories = [asv.crash_history for asv in env.asvs]
+                asv_crash_histories = [asv.crash_history for asv in env.asvs],
+                obs_histories=[[asv.observation_history for asv in env.asvs]]
             )
         )
 
@@ -232,41 +263,37 @@ class CooperativeCoevolutionaryAlgorithm():
             offspring.append(self.selectSubPopulation(subpop))
         return offspring
 
-    def shuffle(self, population):
-        for subpop in population:
-            random.shuffle(subpop)
-
     def assignFitnesses(self, teams, eval_infos):
-        # There may be several eval_infos for the same team
-        # This is the case if there are many evaluations per team
-        # In that case, we need to aggregate those many evaluations into one fitness
-        if self.num_evaluations_per_team == 1:
-            for team, eval_info in zip(teams, eval_infos):
-                fitnesses = eval_info.rewards
-                for individual, fit in zip(team, fitnesses):
-                    individual.fitness.values = fit
-        else:
-            team_list = []
-            eval_info_list = []
-            for team, eval_info in zip(teams, eval_infos):
-                team_list.append(team)
-                eval_info_list.append(eval_info)
+        for team, eval in zip(teams, eval_infos):
+            fitnesses = eval.rewards
+            for individual, fit in zip(team.individuals, fitnesses):
+                individual.fitness_list.append(fit)
 
-            for team_id, team in enumerate(team_list[::self.num_evaluations_per_team]):
-                # Get all the eval infos for this team
-                team_eval_infos = eval_info_list[team_id*self.num_evaluations_per_team:(team_id+1)*self.num_evaluations_per_team]
-                # Aggregate the fitnesses into a big numpy array
-                all_fitnesses = [eval_info.rewards for eval_info in team_eval_infos]
-                average_fitnesses = [0 for _ in range(len(all_fitnesses[0]))]
-                for fitnesses in all_fitnesses:
-                    for count, fit in enumerate(fitnesses):
-                        average_fitnesses[count] += fit[0]
-                for ind in range(len(average_fitnesses)):
-                    average_fitnesses[ind] = average_fitnesses[ind] / self.num_evaluations_per_team
-                # And now get that back to the individuals
-                fitnesses = tuple([(f,) for f in average_fitnesses])
-                for individual, fit in zip(team, fitnesses):
-                    individual.fitness.values = fit
+    def assignFitnessesWithCritic(self, teams, eval_infos):
+        for team, eval in zip(teams, eval_infos):
+            trajectory=eval.joint_trajectory.obs_histories[0]
+            for individual, traj,idx in zip(team.individuals, trajectory,range(len(team.individuals))):
+                traj = np.array(traj)
+                individual.fitness_list.append(self.critic.evaluate(traj,idx))
+
+    def criticAdd(self,teams,eval_infos):
+        for team, eval in zip(teams, eval_infos):
+            trajectory=eval.joint_trajectory.obs_histories[0]
+            rewards=eval.rewards[-2]
+            for traj,idx in zip(trajectory,range(len(team.individuals))):
+                traj = np.array(traj)
+                r = np.array(rewards)
+                #r = [1 for _ in traj]
+                self.critic.add(traj,r,idx)
+
+
+    def aggregateFitnesses(self, population):
+        for subpop in population:
+            for individual in subpop:
+                if len(individual.fitness_list) == 1:
+                    individual.fitness.values = individual.fitness_list[0]
+                else:
+                    individual.fitness.values = (np.average(np.array(individual.fitness_list), axis=0),)
 
     def setPopulation(self, population, offspring):
         for subpop, subpop_offspring in zip(population, offspring):
@@ -277,7 +304,7 @@ class CooperativeCoevolutionaryAlgorithm():
         header = "generation,team_fitness_aggregated"
         for j in range(self.num_asvs):
             header += ",asv_"+str(j)+"_"
-        for i in range(self.num_evaluations_per_team):
+        for i in range(self.num_rollouts_per_team):
             header+=",team_fitness_"+str(i)
             for j in range(self.num_asvs):
                 header+=",team_"+str(i)+"_asv_"+str(j)
@@ -300,7 +327,7 @@ class CooperativeCoevolutionaryAlgorithm():
                 team_eval_infos.append(eval_info)
             # Aggergate the fitnesses into a big numpy array
             num_ind_per_team = len(team_eval_infos[0].fitnesses)
-            all_fit = np.zeros(shape=(self.num_evaluations_per_team, num_ind_per_team))
+            all_fit = np.zeros(shape=(self.num_rollouts_per_team, num_ind_per_team))
             for num_eval, eval_info in enumerate(team_eval_infos):
                 fitnesses = eval_info.rewards
                 for num_ind, fit in enumerate(fitnesses):
@@ -403,54 +430,35 @@ class CooperativeCoevolutionaryAlgorithm():
                     # Write it out
                     file.write(csv_line)
 
-    def run(self):
-        for num_trial in range(self.config["experiment"]["num_trials"]):
-            # Init gen counter
-            self.gen = 0
+    def runTrial(self, num_trial):
+        # Init gen counter
+        self.gen = 0
 
-            # Create directory for saving data
-            trial_dir = self.trials_dir / ("trial_"+str(num_trial))
-            if not os.path.isdir(trial_dir):
-                os.makedirs(trial_dir)
+        # Create directory for saving data
+        trial_dir = self.trials_dir / ("trial_"+str(num_trial))
+        if not os.path.isdir(trial_dir):
+            os.makedirs(trial_dir)
 
-            # Create csv file for saving evaluation fitnesses
-            self.createEvalFitnessCSV(trial_dir)
+        # Create csv file for saving evaluation fitnesses
+        self.createEvalFitnessCSV(trial_dir)
 
-            # Initialize the population
-            pop = self.population()
+        # Initialize the population
+        pop = self.population()
 
-            # Create the teams
-            teams = self.formTeams(pop)
+        # Create the teams
+        teams = self.formTeams(pop)
 
-            # Evaluate the teams
-            eval_infos = self.evaluateTeams(teams)
+        for gen in tqdm(range(self.config["ccea"]["num_generations"])):
+            # Update gen counter
 
-            # Assign fitnesses to individuals
-            self.assignFitnesses(teams, eval_infos)
+            self.gen = gen
+            # Perform selection
+            offspring = self.select(pop)
 
-            # Evaluate a team with the best indivdiual from each subpopulation
-            eval_infos = self.evaluateEvaluationTeam(pop)
-
-            # Save fitnesses of the evaluation team
-            self.writeEvalFitnessCSV(trial_dir, eval_infos)
-
-            # Save trajectories of evaluation team
-            if self.save_trajectories:
-                self.writeEvalTrajs(trial_dir, eval_infos)
-
-            for gen in tqdm(range(self.config["ccea"]["num_generations"])):
-                # Update gen counter
-                self.gen = gen+1
-
-                # Perform selection
-                offspring = self.select(pop)
-
+            """Start multiple teams per evaluation"""
+            for _ in range(self.num_teams_per_evaluation):
                 # Perform mutation
                 self.mutate(offspring)
-
-                # Shuffle subpopulations in offspring
-                # to make teams random
-                self.shuffle(offspring)
 
                 # Form teams for evaluation
                 teams = self.formTeams(offspring)
@@ -458,27 +466,44 @@ class CooperativeCoevolutionaryAlgorithm():
                 # Evaluate each team
                 eval_infos = self.evaluateTeams(teams)
 
+                if self.critic is not None:
+                    self.criticAdd(teams,eval_infos)
                 # Now assign fitnesses to each individual
-                self.assignFitnesses(teams, eval_infos)
+                if self.critic is not None:
+                    self.assignFitnessesWithCritic(teams, eval_infos)
+                else:
+                    self.assignFitnesses(teams, eval_infos)
 
-                # Evaluate a team with the best indivdiual from each subpopulation
-                eval_infos = self.evaluateEvaluationTeam(offspring)
+            # Now aggregate all of their assigned fitnesses
+            self.aggregateFitnesses(offspring)
+            '''End multiple teams per evaluation'''
+            if self.critic is not None:
+                self.critic.train()
+            # Evaluate a team with the best indivdiual from each subpopulation
+            eval_infos = self.evaluateEvaluationTeam(offspring)
 
-                # Save fitnesses
-                self.writeEvalFitnessCSV(trial_dir, eval_infos)
+            # Save fitnesses
+            self.writeEvalFitnessCSV(trial_dir, eval_infos)
 
-                # Save trajectories
-                if self.save_trajectories and self.gen % self.num_gens_between_save_traj == 0:
-                    self.writeEvalTrajs(trial_dir, eval_infos)
+            # Save trajectories
+            if self.save_trajectories and self.gen % self.num_gens_between_save_traj == 0:
+                self.writeEvalTrajs(trial_dir, eval_infos)
 
-                # Now populate the population with individuals from the offspring
-                self.setPopulation(pop, offspring)
+            # Now populate the population with individuals from the offspring
+            self.setPopulation(pop, offspring)
+
+    def run(self, num_trial):
+        if num_trial is None:
+            # Run all trials if no number is specified
+            for num_trial in range(self.config["experiment"]["num_trials"]):
+                self.runTrial(num_trial)
+        else:
+            # Run only the trial specified
+            self.runTrial(num_trial)
 
         if self.use_multiprocessing:
             self.pool.close()
 
-        return pop
-
-def runCCEA(config_dir):
+def runCCEA(config_dir, num_trial=None):
     ccea = CooperativeCoevolutionaryAlgorithm(config_dir)
-    return ccea.run()
+    return ccea.run(num_trial)

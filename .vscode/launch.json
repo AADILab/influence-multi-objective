@@ -1,0 +1,37 @@
+{
+    // Use IntelliSense to learn about possible attributes.
+    // Hover to view descriptions of existing attributes.
+    // For more information, visit: https://go.microsoft.com/fwlink/?linkid=830387
+    "version": "0.2.0",
+    "configurations": [
+        {
+            "name": "Python Debugger: Current File with Arguments",
+            "type": "debugpy",
+            "request": "launch",
+            "program": "${file}",
+            "console": "integratedTerminal",
+            "args": "${command:pickArgs}"
+        },
+        {
+            "name": "TestRewards test_rewards.test_spoof_0a",
+            "type": "debugpy",
+            "request": "launch",
+            "program": "~/influence-multi-objective/tests/test_rewards.py",
+            "args": "TestRewards.test_spoof_0a"
+        },
+        {
+            "name": "TestRewards test_rewards.test_spoof_0b",
+            "type": "debugpy",
+            "request": "launch",
+            "program": "~/influence-multi-objective/tests/test_rewards.py",
+            "args": "TestRewards.test_spoof_0b"
+        },
+        {
+            "name": "TestRewards test_rewards.test_spoof_0c",
+            "type": "debugpy",
+            "request": "launch",
+            "program": "~/influence-multi-objective/tests/test_rewards.py",
+            "args": "TestRewards.test_spoof_0c"
+        }
+    ]
+}
