@@ -523,7 +523,15 @@ class OceanEnv():
         for asv_ind, asv in enumerate(self.asvs):
             # Placeholder action
             asv_velocity = np.array([0.,0.])
-            asv_observation = np.zeros(2*len(self.asvs)+2*len(self.auvs))
+            asv_config = self.config["env"]["asv"]
+            if asv_config["observation_type"] == "global":
+                asv_observation = np.zeros(2*len(self.asvs)+2*len(self.auvs))
+            elif asv_config["observation_type"] == "local":
+                asv_observation = np.zeros(asv_config["num_asv_bins"] \
+                    + asv_config["num_auv_bins"] + asv_config["num_obstacle_traces"])
+            if len(asv_observation) == 8:
+                print("found it")
+
             if not asv.crashed:
                 asv_observation = self.get_asv_observation(asv_ind)
                 asv_velocity = asv.policy(asv_observation)
@@ -581,7 +589,12 @@ class OceanEnv():
         # Add final observations
         for asv_ind, asv in enumerate(self.asvs):
             # Just get the observation
-            asv_observation = np.zeros(2*len(self.asvs)+2*len(self.auvs))
+            asv_config = self.config["env"]["asv"]
+            if asv_config["observation_type"] == "global":
+                asv_observation = np.zeros(2*len(self.asvs)+2*len(self.auvs))
+            elif asv_config["observation_type"] == "local":
+                asv_observation = np.zeros(asv_config["num_asv_bins"] \
+                    + asv_config["num_auv_bins"] + asv_config["num_obstacle_traces"])
             if not asv.crashed:
                 asv_observation = self.get_asv_observation(asv_ind)
             asv.observation_history.append(asv_observation)
