@@ -23,8 +23,10 @@ def plot_vectors(vectors, ax=None, *args, **kwargs):
     for vector in vectors:
         if ax is None:
             plt.plot([vector.startpt[0], vector.endpt[0]], [vector.startpt[1], vector.endpt[1]], *args, **kwargs)
+            plt.plot([vector.startpt[0]], [vector.startpt[1]], marker= 'o',*args, **kwargs)
         else:
             ax.plot([vector.startpt[0], vector.endpt[0]], [vector.startpt[1], vector.endpt[1]], *args, **kwargs)
+            ax.plot([vector.startpt[0]], [vector.startpt[1]], marker= 'o',*args, **kwargs)
 
 # High level convenience plotting functions
 
