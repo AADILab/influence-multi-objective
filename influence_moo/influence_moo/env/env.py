@@ -3,7 +3,6 @@ from copy import deepcopy
 import numpy as np
 from pathlib import Path
 from influence_moo.utils import out_of_bounds, determine_collision, line_of_sight, raycast
-from influence_moo.env.mission import Mission
 
 class AUV():
     def __init__(self, targets, max_velocity):
@@ -410,27 +409,42 @@ class Rewards():
 
 class OceanEnv():
     def __init__(self, config):
-        mission_dir = Path(os.path.expanduser(Path(config["env"]["mission_dir"])))
-        self.mission = Mission(mission_dir)
-
         self.config = config
         ec = self.config["env"]
         self.dt = ec["dt"]
         self.t_final = ec["t_final"]
         self.num_iterations = int(self.t_final / self.dt)
-        self.asv_max_speed = ec['asv']['max_speed']
-        self.auv_max_speed = ec['asv']['max_speed']
+        self.asv_max_speed = ec['asv_params']['max_speed']
+        self.auv_max_speed = ec['asv_params']['max_speed']
         self.collision_step_size = ec['collision_step_size']
-        self.asv_observation_type = ec['asv']['observation_type']
-        self.asv_raytrace_distance = ec['asv']['raytrace_distance']
-        self.num_asv_bins = ec['asv']['num_asv_bins']
-        self.num_auv_bins = ec['asv']['num_auv_bins']
-        self.num_obstacle_traces = ec['asv']['num_obstacle_traces']
+        self.asv_observation_type = ec['asv_params']['observation_type']
+        self.asv_raytrace_distance = ec['asv_params']['raytrace_distance']
+        self.num_asv_bins = ec['asv_params']['num_asv_bins']
+        self.num_auv_bins = ec['asv_params']['num_auv_bins']
+        self.num_obstacle_traces = ec['asv_params']['num_obstacle_traces']
+
+        self.connectivity_grid = np.array(ec['connectivity_grid'])
+        self.paths = [np.array(auv['path']) for auv in ec['auvs']]
+        self.asv_start_positions = [np.array(asv['position']) for asv in ec['asvs']]
+
+        # Wave parameters
+        self.x_a = ec['waves']['x_']['a']
+        self.x_b = ec['waves']['x_']['b']
+        self.x_c = ec['waves']['x_']['c']
+        self.y_a = ec['waves']['y_']['a']
+        self.y_b = ec['waves']['y_']['b']
+        self.y_c = ec['waves']['y_']['c']
 
         self.pois = []
-        for poi_position, poi_config in zip(self.mission.pois, ec['pois']):
-            self.pois.append(POI(position=poi_position, value=poi_config['value'], observation_radius=poi_config['observation_radius']))
-        self.rewards = Rewards(self.pois, self.mission.connectivity_grid, self.collision_step_size, self.config)
+        for poi_config in ec['pois']:
+            self.pois.append(POI(position=poi_config['position'], value=poi_config['value'], observation_radius=poi_config['observation_radius']))
+        self.rewards = Rewards(self.pois, self.connectivity_grid, self.collision_step_size, self.config)
+
+    def wave_x(self, x):
+        return self.x_a*np.sin(x/self.x_b + self.x_c)
+
+    def wave_y(self, y):
+        return self.y_a*np.sin(y/self.y_b + self.y_c)
 
     def get_asv_observation(self, asv_ind):
         # ASV has access to some but NOT ALL global state information
@@ -460,7 +474,7 @@ class OceanEnv():
             for i in range(self.num_obstacle_traces):
                 angle = 2*np.pi * i/float(self.num_obstacle_traces)
                 pos = self.asvs[asv_ind].position + np.array([self.asv_raytrace_distance * np.cos(angle), self.asv_raytrace_distance * np.sin(angle)])
-                sight, pt = raycast(self.asvs[asv_ind].position, pos, self.mission.connectivity_grid, self.collision_step_size)
+                sight, pt = raycast(self.asvs[asv_ind].position, pos, self.connectivity_grid, self.collision_step_size)
                 if not sight:
                     # The ray hit a point. Get distance to that point
                     observation.append(np.linalg.norm(self.asvs[asv_ind].position - pt))
@@ -473,7 +487,7 @@ class OceanEnv():
             angle_increment = 2*np.pi / self.num_asv_bins
             other_asvs = remove_agent(self.asvs, asv_ind)
             for asv in other_asvs:
-                if line_of_sight(self.asvs[asv_ind].position, asv.position, self.mission.connectivity_grid, self.collision_step_size):
+                if line_of_sight(self.asvs[asv_ind].position, asv.position, self.connectivity_grid, self.collision_step_size):
                     # Bin the ASV if it's in line of sight
                     y = asv.position[1] - self.asvs[asv_ind].position[1]
                     x = asv.position[0] - self.asvs[asv_ind].position[0]
@@ -494,7 +508,7 @@ class OceanEnv():
             bins = [[] for _ in range(self.num_auv_bins)]
             angle_increment = 2*np.pi / self.num_auv_bins
             for auv in self.auvs:
-                if line_of_sight(self.asvs[asv_ind].position, auv.position, self.mission.connectivity_grid, self.collision_step_size):
+                if line_of_sight(self.asvs[asv_ind].position, auv.position, self.connectivity_grid, self.collision_step_size):
                     # Bin the ASV if it's in line of sight
                     y = auv.position[1] - self.asvs[asv_ind].position[1]
                     x = auv.position[0] - self.asvs[asv_ind].position[0]
@@ -523,7 +537,7 @@ class OceanEnv():
         for asv_ind, asv in enumerate(self.asvs):
             # Placeholder action
             asv_velocity = np.array([0.,0.])
-            asv_config = self.config["env"]["asv"]
+            asv_config = self.config["env"]["asv_params"]
             if asv_config["observation_type"] == "global":
                 asv_observation = np.zeros(2*len(self.asvs)+2*len(self.auvs))
             elif asv_config["observation_type"] == "local":
@@ -537,8 +551,8 @@ class OceanEnv():
                 asv_velocity = asv.policy(asv_observation)
                 asv.position += asv_velocity*self.dt
 
-            if out_of_bounds(asv.position, self.mission.connectivity_grid.shape[0], self.mission.connectivity_grid.shape[1]) \
-                or determine_collision(asv.position, self.mission.connectivity_grid):
+            if out_of_bounds(asv.position, self.connectivity_grid.shape[0], self.connectivity_grid.shape[1]) \
+                or determine_collision(asv.position, self.connectivity_grid):
                 asv.crashed = True
 
             asv.path.append(deepcopy(asv.position))
@@ -552,15 +566,15 @@ class OceanEnv():
             auv_action = np.array([0.,0.])
             # Wave moves auv
             if not auv.crashed:
-                auv.position += np.array([ self.mission.wave_x(auv.position[0])*self.dt, self.mission.wave_y(auv.position[1])*self.dt ])
-            if out_of_bounds(auv.position, self.mission.connectivity_grid.shape[0], self.mission.connectivity_grid.shape[1]) \
-                or determine_collision(auv.position, self.mission.connectivity_grid):
+                auv.position += np.array([ self.wave_x(auv.position[0])*self.dt, self.wave_y(auv.position[1])*self.dt ])
+            if out_of_bounds(auv.position, self.connectivity_grid.shape[0], self.connectivity_grid.shape[1]) \
+                or determine_collision(auv.position, self.connectivity_grid):
                 auv.crashed = True
             # auv acts based on hypothesis position
             if not auv.crashed:
                 auv_action = auv.update(self.dt)
-            if out_of_bounds(auv.position, self.mission.connectivity_grid.shape[0], self.mission.connectivity_grid.shape[1]) \
-                or determine_collision(auv.position, self.mission.connectivity_grid):
+            if out_of_bounds(auv.position, self.connectivity_grid.shape[0], self.connectivity_grid.shape[1]) \
+                or determine_collision(auv.position, self.connectivity_grid):
                 auv.crashed = True
 
             auv.path.append(deepcopy(auv.position))
@@ -571,16 +585,16 @@ class OceanEnv():
 
     def run(self, asv_policy_functions):
         # Let's give it a try
-        self.auvs = [AUV(path, 1.) for path in self.mission.paths]
+        self.auvs = [AUV(path, 1.) for path in self.paths]
 
         self.asvs = [
             ASV(
                 position=start_position.astype(float),
                 auvs=self.auvs,
-                connectivity_grid=self.mission.connectivity_grid,
+                connectivity_grid=self.connectivity_grid,
                 policy_function=policy_func
             )
-            for start_position ,policy_func in zip(self.mission.asv_start_positions, asv_policy_functions)
+            for start_position ,policy_func in zip(self.asv_start_positions, asv_policy_functions)
         ]
 
         for _ in range(self.num_iterations):
@@ -589,7 +603,7 @@ class OceanEnv():
         # Add final observations
         for asv_ind, asv in enumerate(self.asvs):
             # Just get the observation
-            asv_config = self.config["env"]["asv"]
+            asv_config = self.config["env"]["asv_params"]
             if asv_config["observation_type"] == "global":
                 asv_observation = np.zeros(2*len(self.asvs)+2*len(self.auvs))
             elif asv_config["observation_type"] == "local":

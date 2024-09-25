@@ -83,9 +83,9 @@ class CooperativeCoevolutionaryAlgorithm():
         # Template env for all our rollouts
         # deepcopy this attribute so we always have a clean one
         self.clean_env = OceanEnv(self.config)
-        self.num_auvs = len(self.clean_env.mission.paths)
-        self.num_asvs = len(self.clean_env.mission.asv_start_positions)
-        self.num_pois = len(self.clean_env.mission.pois)
+        self.num_auvs = len(self.clean_env.paths)
+        self.num_asvs = len(self.clean_env.asv_start_positions)
+        self.num_pois = len(self.clean_env.pois)
 
         # For neural network calculations
         self.nn_template = self.generateTemplateNeuralNetwork()
@@ -109,9 +109,9 @@ class CooperativeCoevolutionaryAlgorithm():
         self.__dict__.update(state)
 
     def generateTemplateNeuralNetwork(self):
-        asv_config = self.config['env']['asv']
+        asv_config = self.config['env']['asv_params']
         if asv_config['observation_type'] == 'global':
-            num_inputs = 2*self.num_asvs+2*len(self.clean_env.mission.paths)
+            num_inputs = 2*self.num_asvs+2*len(self.clean_env.paths)
         elif asv_config['observation_type'] == 'local':
             num_inputs = asv_config['num_asv_bins']+asv_config['num_auv_bins']+asv_config['num_obstacle_traces']
         agent_nn = NeuralNetwork(

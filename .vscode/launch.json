@@ -46,6 +46,12 @@
             "request": "launch",
             "program": "~/influence-multi-objective/influence_moo/influence_moo/run_cli.py",
             "args": "~/influence-multi-objective/results/captain_c/numba/1_team_per_eval/alignment/config.yaml"
+        },
+        {
+            "name": "Debug example",
+            "type": "debugpy",
+            "request": "launch",
+            "program": "~/influence-multi-objective/run_example.py"
         }
     ]
 }
