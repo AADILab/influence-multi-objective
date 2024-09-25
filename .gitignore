@@ -3,3 +3,4 @@ outfigs
 **/.ipynb_checkpoints/**
 results
 program.prof
+example_results/trial_*
