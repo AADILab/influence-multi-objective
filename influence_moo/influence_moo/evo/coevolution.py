@@ -87,13 +87,20 @@ class CooperativeCoevolutionaryAlgorithm():
         self.num_asvs = len(self.clean_env.asv_start_positions)
         self.num_pois = len(self.clean_env.pois)
 
+        # Derive the observation size based on config
+        ac = self.config['env']['asv_params']
+        if ac['observation_type'] == 'global':
+            self.observation_size = 2*self.num_asvs+2*len(self.clean_env.paths)
+        elif ac['observation_type'] == 'local':
+            self.observation_size = ac['num_asv_bins']+ac['num_auv_bins']+ac['num_obstacle_traces']
+
         # For neural network calculations
         self.nn_template = self.generateTemplateNeuralNetwork()
 
         if self.config['rewards']['which_critic']=="alignment":
-            self.critic=align(self.num_asvs,"cpu",2,self.config)
+            self.critic=align(self.num_asvs,"cpu",2,self.observation_size)
         elif self.config['rewards']['which_critic']=="fitness_critic":
-            self.critic=fitnesscritic(self.num_asvs,"cpu",0,self.config)
+            self.critic=fitnesscritic(self.num_asvs,"cpu",0,self.observation_size)
         else:
             self.critic=None
     # This makes it possible to pass evaluation to multiprocessing
@@ -110,14 +117,9 @@ class CooperativeCoevolutionaryAlgorithm():
         self.__dict__.update(state)
 
     def generateTemplateNeuralNetwork(self):
-        asv_config = self.config['env']['asv_params']
-        if asv_config['observation_type'] == 'global':
-            num_inputs = 2*self.num_asvs+2*len(self.clean_env.paths)
-        elif asv_config['observation_type'] == 'local':
-            num_inputs = asv_config['num_asv_bins']+asv_config['num_auv_bins']+asv_config['num_obstacle_traces']
         agent_nn = NeuralNetwork(
-            num_inputs=num_inputs,
-            num_hidden=asv_config['network']['num_hidden'],
+            num_inputs=self.observation_size,
+            num_hidden=self.config['env']['asv_params']['network']['num_hidden'],
             num_outputs=2
         )
         return agent_nn

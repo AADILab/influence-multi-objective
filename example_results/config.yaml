@@ -273,7 +273,5 @@ rewards:
   which_critic: alignment # none, alignment, fitness_critic
   multi_reward: single
   distance_threshold: 5.0
-critic:
-  state_size: 12
 experiment:
   num_trials: 10
