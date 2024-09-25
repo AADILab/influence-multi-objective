@@ -103,6 +103,7 @@ class CooperativeCoevolutionaryAlgorithm():
         self_dict = self.__dict__.copy()
         del self_dict['pool']
         del self_dict['map']
+        del self_dict['critic']
         return self_dict
 
     def __setstate__(self, state):

@@ -258,7 +258,7 @@ ccea:
       num_rollouts_per_team: 1
       num_teams_per_evaluation: 1
 processing:
-  use_multiprocessing: False
+  use_multiprocessing: True
   num_threads: 20
 data:
   save_trajectories:
