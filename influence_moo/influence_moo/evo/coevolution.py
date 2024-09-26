@@ -433,6 +433,28 @@ class CooperativeCoevolutionaryAlgorithm():
                     # Write it out
                     file.write(csv_line)
 
+    def evaluate(self, offspring):
+        """Start multiple teams per evaluation"""
+        for _ in range(self.num_teams_per_evaluation):
+            # Form teams for evaluation
+            teams = self.formTeams(offspring)
+
+            # Evaluate each team
+            eval_infos = self.evaluateTeams(teams)
+
+            if self.critic is not None:
+                self.criticAdd(teams,eval_infos)
+            # Now assign fitnesses to each individual
+            if self.critic is not None:
+                self.assignFitnessesWithCritic(teams, eval_infos)
+            else:
+                self.assignFitnesses(teams, eval_infos)
+
+        # Now aggregate all of their assigned fitnesses
+        self.aggregateFitnesses(offspring)
+        '''End multiple teams per evaluation'''
+
+
     def runTrial(self, num_trial):
         # Init gen counter
         self.gen = 0
@@ -445,43 +467,30 @@ class CooperativeCoevolutionaryAlgorithm():
         # Create csv file for saving evaluation fitnesses
         self.createEvalFitnessCSV(trial_dir)
 
-        # Initialize the population
-        pop = self.population()
-
-        # Create the teams
-        teams = self.formTeams(pop)
-
-        for gen in tqdm(range(self.config["ccea"]["num_generations"])):
+        # Include 0th generation
+        for gen in tqdm(range(self.config["ccea"]["num_generations"] + 1)):
             # Update gen counter
-
             self.gen = gen
-            # Perform selection
-            offspring = self.select(pop)
 
-            """Start multiple teams per evaluation"""
-            for _ in range(self.num_teams_per_evaluation):
+            # Initialize the population on generation 0
+            if self.gen == 0:
+                pop = self.population()
+                offspring = deepcopy(pop)
+
+            # Continue evolution on other iterations
+            else:
+                # Perform selection
+                offspring = self.select(pop)
+
                 # Perform mutation
                 self.mutate(offspring)
 
-                # Form teams for evaluation
-                teams = self.formTeams(offspring)
+            # Perform evaluation
+            self.evaluate(offspring)
 
-                # Evaluate each team
-                eval_infos = self.evaluateTeams(teams)
-
-                if self.critic is not None:
-                    self.criticAdd(teams,eval_infos)
-                # Now assign fitnesses to each individual
-                if self.critic is not None:
-                    self.assignFitnessesWithCritic(teams, eval_infos)
-                else:
-                    self.assignFitnesses(teams, eval_infos)
-
-            # Now aggregate all of their assigned fitnesses
-            self.aggregateFitnesses(offspring)
-            '''End multiple teams per evaluation'''
             if self.critic is not None:
                 self.critic.train()
+
             # Evaluate a team with the best indivdiual from each subpopulation
             eval_infos = self.evaluateEvaluationTeam(offspring)
 
