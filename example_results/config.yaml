@@ -270,7 +270,7 @@ rewards:
   trajectory_influence_threshold: 0.0
   auv_reward: none
   asv_reward: global
-  which_critic: alignment # none, alignment, fitness_critic
+  which_critic: fitness_critic # none, alignment, fitness_critic
   multi_reward: single
   distance_threshold: 5.0
 experiment:
