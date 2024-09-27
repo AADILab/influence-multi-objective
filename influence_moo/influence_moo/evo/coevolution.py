@@ -366,17 +366,20 @@ class CooperativeCoevolutionaryAlgorithm():
                 header = ""
                 # First the states (auvs asvs)
                 for i in range(self.num_auvs):
-                    header += "auv_"+str(i)+"_x,auv_"+str(i)+"_y,"
-                for i in range(self.num_auvs):
-                    header += "auv_"+str(i)+"_hx,auv_"+str(i)+"_hy,"
+                    header += "auv"+str(i)+"_x,auv"+str(i)+"_y,"
                 for i in range(self.num_asvs):
-                    header += "asv_"+str(i)+"_x,asv_"+str(i)+"_y,"
-                # Observations (add next)
+                    header += "asv"+str(i)+"_x,asv"+str(i)+"_y,"
+                # Observations (auv hypothesis positions, asv observations)
+                for i in range(self.num_auvs):
+                    header += "auv"+str(i)+"_hx,auv"+str(i)+"_hy,"
+                for i in range(self.num_asvs):
+                    for j in range(self.observation_size):
+                        header += "asv"+str(i)+"_o"+str(j)+","
                 # Actions
                 for i in range(self.num_auvs):
-                    header += "auv_"+str(i)+"_dx,auv_"+str(i)+"_dy,"
+                    header += "auv"+str(i)+"_dx,auv"+str(i)+"_dy,"
                 for i in range(self.num_asvs):
-                    header += "asv_"+str(i)+"_dx,asv_"+str(i)+"_dy,"
+                    header += "asv"+str(i)+"_dx,asv"+str(i)+"_dy,"
                 header+="\n"
                 # Write out the header at the top of the csv
                 file.write(header)
@@ -398,12 +401,17 @@ class CooperativeCoevolutionaryAlgorithm():
                 for auv_path in joint_traj.auv_paths:
                     for t, auv_state in enumerate(auv_path):
                         joint_state_history[t] += [s for s in auv_state]
-                for auv_hpath in joint_traj.auv_hpaths:
-                    for t, auv_state in enumerate(auv_hpath):
-                        joint_state_history[t] += [s for s in auv_state]
                 for asv_path in joint_traj.asv_paths:
                     for t, asv_state in enumerate(asv_path):
                         joint_state_history[t] += [s for s in asv_state]
+                # Observations
+                joint_obs_history = [[] for _ in joint_traj.auv_paths[0]]
+                for auv_hpath in joint_traj.auv_hpaths:
+                    for t, auv_obs in enumerate(auv_hpath):
+                        joint_obs_history[t] += [s for s in auv_obs]
+                for asv_obs_history in joint_traj.obs_histories[0]:
+                    for t, asv_obs in enumerate(asv_obs_history):
+                        joint_obs_history[t] += [o for o in asv_obs]
                 # Then actions
                 joint_action_history = [[] for _ in joint_traj.auv_actions[0]]
                 for auv_action_history in joint_traj.auv_actions:
@@ -412,19 +420,24 @@ class CooperativeCoevolutionaryAlgorithm():
                 for asv_action_history in joint_traj.asv_actions:
                     for t, asv_action in enumerate(asv_action_history):
                         joint_action_history[t] += [a for a in asv_action]
-                for joint_state, joint_action in zip(joint_state_history, joint_action_history):
+                for joint_state, joint_observation, joint_action in zip(joint_state_history, joint_obs_history, joint_action_history):
                     # Aggregate state info
                     state_list = []
                     for state in joint_state:
                         state_list+=[str(state)]
                     state_str = ','.join(state_list)
+                    # Aggregate observation info
+                    obs_list = []
+                    for obs in joint_observation:
+                        obs_list+=[str(obs)]
+                    obs_str = ','.join(obs_list)
                     # Aggregate action info
                     action_list = []
                     for action in joint_action:
                         action_list+=[str(action)]
                     action_str = ','.join(action_list)
                     # Put it all together
-                    csv_line = state_str+','+action_str+'\n'
+                    csv_line = state_str+','+obs_str+','+action_str+'\n'
                     # Write it out
                     file.write(csv_line)
 
