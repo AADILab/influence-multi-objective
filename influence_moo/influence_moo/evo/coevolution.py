@@ -5,6 +5,7 @@ import pprint
 import random
 import os
 from pathlib import Path
+from collections.abc import Iterable
 
 import numpy as np
 import yaml
@@ -364,25 +365,28 @@ class CooperativeCoevolutionaryAlgorithm():
             with open(eval_dir, 'w') as file:
                 # Build up the header (labels at the top of the csv)
                 header = ""
-                # First the states (auvs asvs)
+                # AUVs (position, hypothesis position, crash, surface, action)
+                auv_info = [
+                    "x", "y", "hx", "hy", "crash", "surface", "dx", "dy"
+                ]
                 for i in range(self.num_auvs):
-                    header += "auv"+str(i)+"_x,auv"+str(i)+"_y,"
+                    i = str(i)
+                    for a in auv_info:
+                        header += "auv"+i+"_"+a+","
+                # ASVs (position, observation, crash, action)
+                asv_info = [
+                    "x", "y"
+                ] + ["o"+str(i) for i in range(self.observation_size)] + [
+                    "crash", "dx", "dy"
+                ]
                 for i in range(self.num_asvs):
-                    header += "asv"+str(i)+"_x,asv"+str(i)+"_y,"
-                # Observations (auv hypothesis positions, asv observations)
-                for i in range(self.num_auvs):
-                    header += "auv"+str(i)+"_hx,auv"+str(i)+"_hy,"
-                for i in range(self.num_asvs):
-                    for j in range(self.observation_size):
-                        header += "asv"+str(i)+"_o"+str(j)+","
-                # Actions
-                for i in range(self.num_auvs):
-                    header += "auv"+str(i)+"_dx,auv"+str(i)+"_dy,"
-                for i in range(self.num_asvs):
-                    header += "asv"+str(i)+"_dx,asv"+str(i)+"_dy,"
+                    i = str(i)
+                    for a in asv_info:
+                        header+= "asv"+i+"_"+a+","
                 header+="\n"
                 # Write out the header at the top of the csv
                 file.write(header)
+
                 # Now fill in the csv with the data
                 # One line at a time
                 joint_traj = eval_info.joint_trajectory
@@ -395,49 +399,38 @@ class CooperativeCoevolutionaryAlgorithm():
                 # Pad asv actions
                 for asv_action_history in joint_traj.asv_actions:
                     asv_action_history.append([np.nan for _ in asv_action_history[0]])
-                # Transform lists into some way we can save them line by line
-                # Start with states
-                joint_state_history = [[] for _ in joint_traj.auv_paths[0]]
-                for auv_path in joint_traj.auv_paths:
-                    for t, auv_state in enumerate(auv_path):
-                        joint_state_history[t] += [s for s in auv_state]
-                for asv_path in joint_traj.asv_paths:
-                    for t, asv_state in enumerate(asv_path):
-                        joint_state_history[t] += [s for s in asv_state]
-                # Observations
-                joint_obs_history = [[] for _ in joint_traj.auv_paths[0]]
-                for auv_hpath in joint_traj.auv_hpaths:
-                    for t, auv_obs in enumerate(auv_hpath):
-                        joint_obs_history[t] += [s for s in auv_obs]
-                for asv_obs_history in joint_traj.obs_histories[0]:
-                    for t, asv_obs in enumerate(asv_obs_history):
-                        joint_obs_history[t] += [o for o in asv_obs]
-                # Then actions
-                joint_action_history = [[] for _ in joint_traj.auv_actions[0]]
-                for auv_action_history in joint_traj.auv_actions:
-                    for t, auv_action in enumerate(auv_action_history):
-                        joint_action_history[t] += [a for a in auv_action]
-                for asv_action_history in joint_traj.asv_actions:
-                    for t, asv_action in enumerate(asv_action_history):
-                        joint_action_history[t] += [a for a in asv_action]
-                for joint_state, joint_observation, joint_action in zip(joint_state_history, joint_obs_history, joint_action_history):
-                    # Aggregate state info
-                    state_list = []
-                    for state in joint_state:
-                        state_list+=[str(state)]
-                    state_str = ','.join(state_list)
-                    # Aggregate observation info
-                    obs_list = []
-                    for obs in joint_observation:
-                        obs_list+=[str(obs)]
-                    obs_str = ','.join(obs_list)
-                    # Aggregate action info
-                    action_list = []
-                    for action in joint_action:
-                        action_list+=[str(action)]
-                    action_str = ','.join(action_list)
-                    # Put it all together
-                    csv_line = state_str+','+obs_str+','+action_str+'\n'
+                # We need to turn the joint trajectory into a simple list we can step through
+                # to get all relevant information at step t
+                joint_history = [[] for _ in joint_traj.auv_paths[0]]
+                multi_auv_multi_histories = [
+                    joint_traj.auv_paths, joint_traj.auv_hpaths, joint_traj.auv_crash_histories, joint_traj.auv_surface_histories, joint_traj.auv_actions
+                ]
+                for i in range(self.num_auvs):
+                    for multi_auv_history in multi_auv_multi_histories:
+                            single_auv_history = multi_auv_history[i]
+                            for t, auv_step in enumerate(single_auv_history):
+                                if isinstance(auv_step, Iterable):
+                                    joint_history[t] += [s for s in auv_step]
+                                else:
+                                    joint_history[t] += [auv_step]
+                multi_asv_multi_histories = [
+                    joint_traj.asv_paths, joint_traj.obs_histories[0], joint_traj.asv_crash_histories, joint_traj.asv_actions
+                ]
+                for i in range(self.num_asvs):
+                    for multi_asv_history in multi_asv_multi_histories:
+                            single_asv_history = multi_asv_history[i]
+                            for t, asv_step in enumerate(single_asv_history):
+                                if isinstance(asv_step, Iterable):
+                                    joint_history[t] += [s for s in asv_step]
+                                else:
+                                    joint_history[t] += [asv_step]
+                # Go through all the steps and save the info at each step
+                for joint_step in joint_history:
+                    step_info = []
+                    for s in joint_step:
+                        step_info += [str(s)]
+                    str_ = ','.join(step_info)
+                    csv_line = str_+'\n'
                     # Write it out
                     file.write(csv_line)
 
