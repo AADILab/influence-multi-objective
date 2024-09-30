@@ -63,10 +63,9 @@ class Net():
         return loss
 
 class fitnesscritic():
-    def __init__(self,nagents,device,loss_f=0,config=None):
+    def __init__(self,nagents,device,loss_f=0,observation_size=None):
         self.nagents=nagents
-        self.config=config
-        self.nets=[Net(device,loss_fn=loss_f,state=config["critic"]["state_size"]) for i in range(nagents)]
+        self.nets=[Net(device,loss_fn=loss_f,state=observation_size) for i in range(nagents)]
         self.hist=[deque(maxlen=30000) for i in range(nagents)]
 
     def add(self,trajectory,G,agent_index):

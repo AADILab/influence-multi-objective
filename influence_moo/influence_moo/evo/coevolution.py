@@ -5,6 +5,7 @@ import pprint
 import random
 import os
 from pathlib import Path
+from collections.abc import Iterable
 
 import numpy as np
 import yaml
@@ -87,13 +88,20 @@ class CooperativeCoevolutionaryAlgorithm():
         self.num_asvs = len(self.clean_env.asv_start_positions)
         self.num_pois = len(self.clean_env.pois)
 
+        # Derive the observation size based on config
+        ac = self.config['env']['asv_params']
+        if ac['observation_type'] == 'global':
+            self.observation_size = 2*self.num_asvs+2*len(self.clean_env.paths)
+        elif ac['observation_type'] == 'local':
+            self.observation_size = ac['num_asv_bins']+ac['num_auv_bins']+ac['num_obstacle_traces']
+
         # For neural network calculations
         self.nn_template = self.generateTemplateNeuralNetwork()
 
         if self.config['rewards']['which_critic']=="alignment":
-            self.critic=align(self.num_asvs,"cpu",2,self.config)
+            self.critic=align(self.num_asvs,"cpu",2,self.observation_size)
         elif self.config['rewards']['which_critic']=="fitness_critic":
-            self.critic=fitnesscritic(self.num_asvs,"cpu",0,self.config)
+            self.critic=fitnesscritic(self.num_asvs,"cpu",0,self.observation_size)
         else:
             self.critic=None
     # This makes it possible to pass evaluation to multiprocessing
@@ -103,20 +111,16 @@ class CooperativeCoevolutionaryAlgorithm():
         self_dict = self.__dict__.copy()
         del self_dict['pool']
         del self_dict['map']
+        del self_dict['critic']
         return self_dict
 
     def __setstate__(self, state):
         self.__dict__.update(state)
 
     def generateTemplateNeuralNetwork(self):
-        asv_config = self.config['env']['asv_params']
-        if asv_config['observation_type'] == 'global':
-            num_inputs = 2*self.num_asvs+2*len(self.clean_env.paths)
-        elif asv_config['observation_type'] == 'local':
-            num_inputs = asv_config['num_asv_bins']+asv_config['num_auv_bins']+asv_config['num_obstacle_traces']
         agent_nn = NeuralNetwork(
-            num_inputs=num_inputs,
-            num_hidden=asv_config['network']['num_hidden'],
+            num_inputs=self.observation_size,
+            num_hidden=self.config['env']['asv_params']['network']['num_hidden'],
             num_outputs=2
         )
         return agent_nn
@@ -286,7 +290,6 @@ class CooperativeCoevolutionaryAlgorithm():
                 #r = [1 for _ in traj]
                 self.critic.add(traj,r,idx)
 
-
     def aggregateFitnesses(self, population):
         for subpop in population:
             for individual in subpop:
@@ -301,11 +304,12 @@ class CooperativeCoevolutionaryAlgorithm():
 
     def createEvalFitnessCSV(self, trial_dir):
         eval_fitness_dir = trial_dir / "fitness.csv"
-        header = "generation,team_fitness_aggregated"
-        for j in range(self.num_asvs):
-            header += ",asv_"+str(j)+"_"
+        header = ""
+        # header = "generation,team_fitness_aggregated"
+        # for j in range(self.num_asvs):
+        #     header += ",asv_"+str(j)+"_"
         for i in range(self.num_rollouts_per_team):
-            header+=",team_fitness_"+str(i)
+            header+=",team_"+str(i)+"_fitness"
             for j in range(self.num_asvs):
                 header+=",team_"+str(i)+"_asv_"+str(j)
         header += "\n"
@@ -318,7 +322,7 @@ class CooperativeCoevolutionaryAlgorithm():
         if len(eval_infos) == 1:
             eval_info = eval_infos[0]
             team_fit = str(eval_info.rewards[-1][0])
-            agent_fits = [str(fit[0]) for fit in eval_info.rewards[:-1]]
+            agent_fits = [str(fit[0]) for fit in eval_info.rewards[:-2]]
             fit_list = [gen, team_fit]+agent_fits
             fit_str = ','.join(fit_list)+'\n'
         else:
@@ -361,24 +365,28 @@ class CooperativeCoevolutionaryAlgorithm():
             with open(eval_dir, 'w') as file:
                 # Build up the header (labels at the top of the csv)
                 header = ""
-                # First the states (auvs asvs pois)
+                # AUVs (position, hypothesis position, crash, surface, action)
+                auv_info = [
+                    "x", "y", "hx", "hy", "crash", "surface", "dx", "dy"
+                ]
                 for i in range(self.num_auvs):
-                    header += "auv_"+str(i)+"_x,auv_"+str(i)+"_y,"
-                for i in range(self.num_auvs):
-                    header += "auv_"+str(i)+"_hx,auv_"+str(i)+"_hy,"
+                    i = str(i)
+                    for a in auv_info:
+                        header += "auv"+i+"_"+a+","
+                # ASVs (position, observation, crash, action)
+                asv_info = [
+                    "x", "y"
+                ] + ["o"+str(i) for i in range(self.observation_size)] + [
+                    "crash", "dx", "dy"
+                ]
                 for i in range(self.num_asvs):
-                    header += "asv_"+str(i)+"_x,asv_"+str(i)+"_y,"
-                for i in range(self.num_pois):
-                    header += "poi_"+str(i)+"_x,poi_"+str(i)+"_y,"
-                # NO Observations. Observations are just a reorganized subset of states
-                # Actions
-                for i in range(self.num_auvs):
-                    header += "auv_"+str(i)+"_dx,auv_"+str(i)+"_dy,"
-                for i in range(self.num_asvs):
-                    header += "asv_"+str(i)+"_dx,asv_"+str(i)+"_dy,"
+                    i = str(i)
+                    for a in asv_info:
+                        header+= "asv"+i+"_"+a+","
                 header+="\n"
                 # Write out the header at the top of the csv
                 file.write(header)
+
                 # Now fill in the csv with the data
                 # One line at a time
                 joint_traj = eval_info.joint_trajectory
@@ -391,44 +399,75 @@ class CooperativeCoevolutionaryAlgorithm():
                 # Pad asv actions
                 for asv_action_history in joint_traj.asv_actions:
                     asv_action_history.append([np.nan for _ in asv_action_history[0]])
-                # Transform lists into some way we can save them line by line
-                # Start with states
-                joint_state_history = [[] for _ in joint_traj.auv_paths[0]]
-                for auv_path in joint_traj.auv_paths:
-                    for t, auv_state in enumerate(auv_path):
-                        joint_state_history[t] += [s for s in auv_state]
-                for auv_hpath in joint_traj.auv_hpaths:
-                    for t, auv_state in enumerate(auv_hpath):
-                        joint_state_history[t] += [s for s in auv_state]
-                for asv_path in joint_traj.asv_paths:
-                    for t, asv_state in enumerate(asv_path):
-                        joint_state_history[t] += [s for s in asv_state]
-                for t in range(len(joint_state_history)):
-                    for poi in self.clean_env.pois:
-                        joint_state_history[t] += [poi.position[0], poi.position[1]]
-                # Then actions
-                joint_action_history = [[] for _ in joint_traj.auv_actions[0]]
-                for auv_action_history in joint_traj.auv_actions:
-                    for t, auv_action in enumerate(auv_action_history):
-                        joint_action_history[t] += [a for a in auv_action]
-                for asv_action_history in joint_traj.asv_actions:
-                    for t, asv_action in enumerate(asv_action_history):
-                        joint_action_history[t] += [a for a in asv_action]
-                for joint_state, joint_action in zip(joint_state_history, joint_action_history):
-                    # Aggregate state info
-                    state_list = []
-                    for state in joint_state:
-                        state_list+=[str(state)]
-                    state_str = ','.join(state_list)
-                    # Aggregate action info
-                    action_list = []
-                    for action in joint_action:
-                        action_list+=[str(action)]
-                    action_str = ','.join(action_list)
-                    # Put it all together
-                    csv_line = state_str+','+action_str+'\n'
+                # We need to turn the joint trajectory into a simple list we can step through
+                # to get all relevant information at step t
+                joint_history = [[] for _ in joint_traj.auv_paths[0]]
+                multi_auv_multi_histories = [
+                    joint_traj.auv_paths, joint_traj.auv_hpaths, joint_traj.auv_crash_histories, joint_traj.auv_surface_histories, joint_traj.auv_actions
+                ]
+                for i in range(self.num_auvs):
+                    for multi_auv_history in multi_auv_multi_histories:
+                            single_auv_history = multi_auv_history[i]
+                            for t, auv_step in enumerate(single_auv_history):
+                                if isinstance(auv_step, Iterable):
+                                    joint_history[t] += [s for s in auv_step]
+                                else:
+                                    joint_history[t] += [auv_step]
+                multi_asv_multi_histories = [
+                    joint_traj.asv_paths, joint_traj.obs_histories[0], joint_traj.asv_crash_histories, joint_traj.asv_actions
+                ]
+                for i in range(self.num_asvs):
+                    for multi_asv_history in multi_asv_multi_histories:
+                            single_asv_history = multi_asv_history[i]
+                            for t, asv_step in enumerate(single_asv_history):
+                                if isinstance(asv_step, Iterable):
+                                    joint_history[t] += [s for s in asv_step]
+                                else:
+                                    joint_history[t] += [asv_step]
+                # Go through all the steps and save the info at each step
+                for joint_step in joint_history:
+                    step_info = []
+                    for s in joint_step:
+                        step_info += [str(s)]
+                    str_ = ','.join(step_info)
+                    csv_line = str_+'\n'
                     # Write it out
                     file.write(csv_line)
+
+    def evaluate(self, offspring):
+        """Start multiple teams per evaluation"""
+        for _ in range(self.num_teams_per_evaluation):
+            # Form teams for evaluation
+            teams = self.formTeams(offspring)
+
+            # Evaluate each team
+            eval_infos = self.evaluateTeams(teams)
+
+            if self.critic is not None:
+                self.criticAdd(teams,eval_infos)
+            # Now assign fitnesses to each individual
+            if self.critic is not None:
+                self.assignFitnessesWithCritic(teams, eval_infos)
+            else:
+                self.assignFitnesses(teams, eval_infos)
+
+        # Now aggregate all of their assigned fitnesses
+        self.aggregateFitnesses(offspring)
+        '''End multiple teams per evaluation'''
+
+    def overwriteEvalWithCritic(self, eval_infos):
+        """This function takes in eval_infos and overwrites the rewards attribute with fitnesses generated by fitness critics/alignment"""
+        for eval_info in eval_infos:
+            critic_rewards = []
+            jt = eval_info.joint_trajectory.obs_histories[0]
+            for idx, t in enumerate(jt):
+                t = np.array(t)
+                critic_rewards.append(self.critic.evaluate(t, idx))
+
+            # New rewards are the critic rewards, vector of Gs, and aggregated G
+            new_rewards = tuple( [r for r in critic_rewards] + list(eval_info.rewards[-2:]))
+
+            eval_info.rewards = new_rewards
 
     def runTrial(self, num_trial):
         # Init gen counter
@@ -442,45 +481,33 @@ class CooperativeCoevolutionaryAlgorithm():
         # Create csv file for saving evaluation fitnesses
         self.createEvalFitnessCSV(trial_dir)
 
-        # Initialize the population
-        pop = self.population()
-
-        # Create the teams
-        teams = self.formTeams(pop)
-
-        for gen in tqdm(range(self.config["ccea"]["num_generations"])):
+        # Include 0th generation
+        for gen in tqdm(range(self.config["ccea"]["num_generations"] + 1)):
             # Update gen counter
-
             self.gen = gen
-            # Perform selection
-            offspring = self.select(pop)
 
-            """Start multiple teams per evaluation"""
-            for _ in range(self.num_teams_per_evaluation):
+            # Initialize the population on generation 0
+            if self.gen == 0:
+                pop = self.population()
+                offspring = deepcopy(pop)
+
+            # Continue evolution on other iterations
+            else:
+                # Perform selection
+                offspring = self.select(pop)
+
                 # Perform mutation
                 self.mutate(offspring)
 
-                # Form teams for evaluation
-                teams = self.formTeams(offspring)
+            # Perform evaluation
+            self.evaluate(offspring)
 
-                # Evaluate each team
-                eval_infos = self.evaluateTeams(teams)
-
-                if self.critic is not None:
-                    self.criticAdd(teams,eval_infos)
-                # Now assign fitnesses to each individual
-                if self.critic is not None:
-                    self.assignFitnessesWithCritic(teams, eval_infos)
-                else:
-                    self.assignFitnesses(teams, eval_infos)
-
-            # Now aggregate all of their assigned fitnesses
-            self.aggregateFitnesses(offspring)
-            '''End multiple teams per evaluation'''
-            if self.critic is not None:
-                self.critic.train()
             # Evaluate a team with the best indivdiual from each subpopulation
             eval_infos = self.evaluateEvaluationTeam(offspring)
+
+            if self.critic is not None:
+                self.overwriteEvalWithCritic(eval_infos)
+                self.critic.train()
 
             # Save fitnesses
             self.writeEvalFitnessCSV(trial_dir, eval_infos)

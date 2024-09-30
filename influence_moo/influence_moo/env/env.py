@@ -543,8 +543,6 @@ class OceanEnv():
             elif asv_config["observation_type"] == "local":
                 asv_observation = np.zeros(asv_config["num_asv_bins"] \
                     + asv_config["num_auv_bins"] + asv_config["num_obstacle_traces"])
-            if len(asv_observation) == 8:
-                print("found it")
 
             if not asv.crashed:
                 asv_observation = self.get_asv_observation(asv_ind)
@@ -596,6 +594,13 @@ class OceanEnv():
             )
             for start_position ,policy_func in zip(self.asv_start_positions, asv_policy_functions)
         ]
+
+        # Init crash history of asvs
+        for asv in self.asvs:
+            if out_of_bounds(asv.position, self.connectivity_grid.shape[0], self.connectivity_grid.shape[1]) \
+                or determine_collision(asv.position, self.connectivity_grid):
+                asv.crashed = True
+            asv.crash_history.append(asv.crashed)
 
         for _ in range(self.num_iterations):
             self.step()

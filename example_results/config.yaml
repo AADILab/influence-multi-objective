@@ -244,7 +244,7 @@ ccea:
     mean: 0.0
     std_deviation: 1.0
     independent_probability: 0.5
-  num_generations: 10000
+  num_generations: 100
   weight_initialization:
     lower_bound: 0.0
     upper_bound: 1.0
@@ -258,7 +258,7 @@ ccea:
       num_rollouts_per_team: 1
       num_teams_per_evaluation: 1
 processing:
-  use_multiprocessing: False
+  use_multiprocessing: True
   num_threads: 20
 data:
   save_trajectories:
@@ -270,10 +270,8 @@ rewards:
   trajectory_influence_threshold: 0.0
   auv_reward: none
   asv_reward: global
-  which_critic: alignment # none, alignment, fitness_critic
+  which_critic: fitness_critic # none, alignment, fitness_critic
   multi_reward: single
   distance_threshold: 5.0
-critic:
-  state_size: 12
 experiment:
-  num_trials: 10
+  num_trials: 1
