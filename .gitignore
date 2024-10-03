@@ -3,4 +3,6 @@ outfigs
 **/.ipynb_checkpoints/**
 results
 program.prof
-example_results/trial_*
+example_results/**/fitness.csv
+example_results/**/trial_*
+*.png

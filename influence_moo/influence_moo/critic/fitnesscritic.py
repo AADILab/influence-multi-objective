@@ -73,7 +73,8 @@ class fitnesscritic():
             self.hist[agent_index].append([traj,g])
 
     def evaluate(self,trajectory,agent_index):   #evaluate max state
-        return (np.max(self.nets[agent_index].feed(trajectory)) ,)
+        vec = self.nets[agent_index].feed(trajectory)
+        return (np.max(vec) ,), vec
 
     def train(self):
         for a in range(self.nagents):

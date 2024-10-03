@@ -108,6 +108,7 @@ class Rewards():
         self.asv_reward = config['rewards']['asv_reward']
         self.multi_reward = config['rewards']['multi_reward']
         self.distance_threshold = config['rewards']['distance_threshold']
+        self.config = config
 
     def local_auv_reward(self, auv):
         # No reward for crashing
@@ -172,7 +173,7 @@ class Rewards():
                 raise Exception("Agents have different length paths")
 
         G_total = 0
-        G_vec=[]
+        G_vec=np.zeros(num_steps)
         for i in range(num_steps):
             # Compute a step-wise reward
 
@@ -200,7 +201,7 @@ class Rewards():
 
             # Add this step-wise reward to the trajectory reward
             G_total += G_step
-            G_vec.append(G_step)
+            G_vec[i] = G_step
 
         return G_total,G_vec
 
@@ -209,16 +210,23 @@ class Rewards():
         auvs_with_ind_removed = auvs[:auv_ind]+auvs[auv_ind+1:]
         return team_reward - self.team(auvs_with_ind_removed)
 
-    def influence(self, asv_position, auv_position):
+    def influence(self, asv, auv):
         """Compute an influence heuristic telling us the influence of an ASV on an AUV"""
+        # Check for line of sight and that neither have crashed
+        if self.influence_heuristic == "no_crash_line_of_sight":
+            if not asv.crashed and not auv.crashed and \
+                line_of_sight(auv.position, asv.position, self.connectivity_grid, self.collision_step_size):
+                return 1.0
+            else:
+                return 0.0
         # Binary influence computation. If you have line of sight, yes influence. No line of sight, no influence
-        if self.influence_heuristic == "line_of_sight":
-            if line_of_sight(auv_position, asv_position, self.connectivity_grid, self.collision_step_size):
+        elif self.influence_heuristic == "line_of_sight":
+            if line_of_sight(auv.position, asv.position, self.connectivity_grid, self.collision_step_size):
                 return 1.0
             else:
                 return 0.0
         elif self.influence_heuristic == "distance_threshold":
-            if np.linalg.norm(auv_position-asv_position) < self.distance_threshold:
+            if np.linalg.norm(auv.position-asv.position) < self.distance_threshold:
                 return 1.0
             else:
                 return 0.0
@@ -235,7 +243,13 @@ class Rewards():
             # Tell me how much each auv was supported at this step
             for a, auv in enumerate(auvs):
                 for asv in asvs:
-                    influence_array[i, a] += self.influence(asv.path[i], auv.path[i])
+                    asvc = deepcopy(asv)
+                    asvc.position = asv.path[i]
+                    asvc.crashed = asv.crash_history[i]
+                    auvc = deepcopy(auv)
+                    auv.position = asv.path[i]
+                    auv.crashed = auv.crash_history[i]
+                    influence_array[i, a] += self.influence(asv, auv)
 
         return influence_array
 
@@ -290,15 +304,17 @@ class Rewards():
 
         # Global reward for ASVs
         if self.asv_reward == "global":
-            return [G for asv in asvs], G ,G_vec
+            return [G for asv in asvs], G, [G_vec for asv in asvs], G_vec
         # Local reward for ASVs
         elif self.asv_reward == "local":
+            # TODO: Add vector-ized version of local rewards to this return statement
             return [self.local_asv_reward(auvs=auvs, asv=asv) for asv in asvs], G ,G_vec
         # Difference reward for ASVs
         elif self.asv_reward == "difference":
             # Removing an ASV's path does not actually change G
             # Hence, the difference reward is always 0.0
-            return [0.0 for asv in asvs], G ,G_vec
+            num_steps = len(auvs[0].path)
+            return [0.0 for asv in asvs], G, [[0.0 for _ in range(num_steps)] for asv in asvs],G_vec
         # Indirect difference reward for ASVs based on indirect contribution to team
         elif self.asv_reward == "indirect_difference_team" or self.asv_reward == "indirect_difference_auv":
             # Create influence array that tells us how much each AUV was influenced
@@ -349,17 +365,28 @@ class Rewards():
             auvs_minus_j_list = [
                 self.remove_influence(auvs, influence_j) for influence_j in influence_j_list
             ]
-            # Compute counterfactual G with the influence of asv j removed
+            # Compute counterfactual G with the influence of asv j removed (both vectorized and final version)
+            counterfactual_G_j_list_both = [
+                self.global_(auvs_minus_j, asvs_minus_j) for auvs_minus_j, asvs_minus_j in zip(auvs_minus_j_list, asvs_minus_j_list)
+            ]
+            # Get final counterfactual G with the influence of asv j removed
             counterfactual_G_j_list = [
-                self.global_(auvs_minus_j, asvs_minus_j)[0] for auvs_minus_j, asvs_minus_j in zip(auvs_minus_j_list, asvs_minus_j_list)
+                G_pair[0] for G_pair in counterfactual_G_j_list_both
+            ]
+            # Compute counterfactual G that is vectorized
+            counterfactual_G_j_list_vec = [
+                G_pair[1] for G_pair in counterfactual_G_j_list_both
             ]
             if self.asv_reward == "indirect_difference_team":
                 # Finally compute an indirect difference reward with these counterfactual paths
                 return [
                     G-counterfactual_G for counterfactual_G in counterfactual_G_j_list
-                ], G ,G_vec
+                ], G, [
+                    G_vec-counterfactual_G_vec for counterfactual_G_vec in counterfactual_G_j_list_vec
+                ], G_vec
 
         # Rewards for AUVs that will be used to derive ASV rewards
+        # TODO: Add vectorized versions of all these rewards for saving to data
         if self.auv_reward == "global":
             auv_rewards = [G for auv in auvs]
         elif self.auv_reward == "local":
@@ -546,8 +573,14 @@ class OceanEnv():
 
             if not asv.crashed:
                 asv_observation = self.get_asv_observation(asv_ind)
-                asv_velocity = asv.policy(asv_observation)
-                asv.position += asv_velocity*self.dt
+                asv_velocity = asv.policy(asv_observation) * self.config['env']['asv_params']['max_speed']
+                new_pos = asv.position + asv_velocity*self.dt
+                line_of_sight, pt = raycast(asv.position, new_pos, self.connectivity_grid, step_size=self.config['env']['collision_step_size'])
+                if not line_of_sight:
+                    asv.position = pt
+                    asv.crashed = True
+                else:
+                    asv.position = new_pos
 
             if out_of_bounds(asv.position, self.connectivity_grid.shape[0], self.connectivity_grid.shape[1]) \
                 or determine_collision(asv.position, self.connectivity_grid):
@@ -583,7 +616,7 @@ class OceanEnv():
 
     def run(self, asv_policy_functions):
         # Let's give it a try
-        self.auvs = [AUV(path, 1.) for path in self.paths]
+        self.auvs = [AUV(path, self.config['env']['auv_params']['max_speed']) for path in self.paths]
 
         self.asvs = [
             ASV(
