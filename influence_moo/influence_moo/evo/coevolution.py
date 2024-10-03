@@ -36,6 +36,13 @@ class JointTrajectory():
         self.asv_crash_histories = asv_crash_histories
         self.obs_histories=obs_histories
 
+class RewardInfo():
+    def __init__(self, agent_rewards, agent_rewards_vec, G_vec, G):
+        self.agents = agent_rewards
+        self.agents_vec = agent_rewards_vec
+        self.G_vec = G_vec
+        self.G = G
+
 class EvalInfo():
     def __init__(self, rewards, joint_trajectory):
         # -1 index is the global reward(s) [scalar for shaping, vector for fitness critic]
@@ -215,11 +222,15 @@ class CooperativeCoevolutionaryAlgorithm():
         # Set up the enviornment
         env = deepcopy(self.clean_env)
         env.run(asv_policy_functions)
-        agent_rewards, G, G_vec = env.rewards.compute(auvs=env.auvs, asvs=env.asvs)
-        rewards = tuple([(r,) for r in agent_rewards]+[G_vec]+[(G,)])
+        agent_rewards, G, agent_rewards_vec, G_vec = env.rewards.compute(auvs=env.auvs, asvs=env.asvs)
 
         return EvalInfo(
-            rewards=rewards,
+            rewards=RewardInfo(
+                agent_rewards = [(r,) for r in agent_rewards],
+                agent_rewards_vec = agent_rewards_vec,
+                G_vec = G_vec,
+                G = G
+            ),
             joint_trajectory=JointTrajectory(
                 auv_paths = [auv.path for auv in env.auvs],
                 auv_hpaths = [auv.h_path for auv in env.auvs],
@@ -269,21 +280,34 @@ class CooperativeCoevolutionaryAlgorithm():
 
     def assignFitnesses(self, teams, eval_infos):
         for team, eval in zip(teams, eval_infos):
-            fitnesses = eval.rewards
+            fitnesses = eval.rewards.agents
             for individual, fit in zip(team.individuals, fitnesses):
                 individual.fitness_list.append(fit)
 
     def assignFitnessesWithCritic(self, teams, eval_infos):
-        for team, eval in zip(teams, eval_infos):
+        for idt, (team, eval) in enumerate(zip(teams, eval_infos)):
             trajectory=eval.joint_trajectory.obs_histories[0]
+            agent_rewards = []
+            agent_rewards_vec = []
             for individual, traj,idx in zip(team.individuals, trajectory,range(len(team.individuals))):
                 traj = np.array(traj)
-                individual.fitness_list.append(self.critic.evaluate(traj,idx))
+                val, vec = self.critic.evaluate(traj,idx)
+                individual.fitness_list.append(val)
+                # Save rewards for overwriting eval_info
+                agent_rewards.append(val)
+                agent_rewards_vec.append(vec)
+            # Build out new rewards.
+            eval_infos[idt].rewards = RewardInfo(
+                agent_rewards = [r for r in agent_rewards],
+                agent_rewards_vec = [r for r in agent_rewards_vec],
+                G_vec = eval.rewards.G_vec,
+                G = eval.rewards.G
+            )
 
     def criticAdd(self,teams,eval_infos):
         for team, eval in zip(teams, eval_infos):
             trajectory=eval.joint_trajectory.obs_histories[0]
-            rewards=eval.rewards[-2]
+            rewards=eval.rewards.G_vec
             for traj,idx in zip(trajectory,range(len(team.individuals))):
                 traj = np.array(traj)
                 r = np.array(rewards)
@@ -321,11 +345,12 @@ class CooperativeCoevolutionaryAlgorithm():
         gen = str(self.gen)
         if len(eval_infos) == 1:
             eval_info = eval_infos[0]
-            team_fit = str(eval_info.rewards[-1][0])
-            agent_fits = [str(fit[0]) for fit in eval_info.rewards[:-2]]
+            team_fit = str(eval_info.rewards.G)
+            agent_fits = [str(fit[0]) for fit in eval_info.rewards.agents]
             fit_list = [gen, team_fit]+agent_fits
             fit_str = ','.join(fit_list)+'\n'
         else:
+            # TODO: This will not work properly with new reward saving code if the evaluation team does multiple rollouts
             team_eval_infos = []
             for eval_info in eval_infos:
                 team_eval_infos.append(eval_info)
@@ -383,6 +408,11 @@ class CooperativeCoevolutionaryAlgorithm():
                     i = str(i)
                     for a in asv_info:
                         header+= "asv"+i+"_"+a+","
+                # Add reward info
+                for i in range(self.num_asvs):
+                    i = str(i)
+                    header+= "asv"+i+"_reward,"
+                header+= "team_reward"
                 header+="\n"
                 # Write out the header at the top of the csv
                 file.write(header)
@@ -424,6 +454,15 @@ class CooperativeCoevolutionaryAlgorithm():
                                     joint_history[t] += [s for s in asv_step]
                                 else:
                                     joint_history[t] += [asv_step]
+                # Save agent reward info
+                for i in range(self.num_asvs):
+                    agent_reward_vec = eval_info.rewards.agents_vec[i]
+                    for t in range(len(agent_reward_vec)):
+                        joint_history[t] += [agent_reward_vec[t]]
+                # Save team reward info
+                team_reward_vec = eval_info.rewards.G_vec
+                for t in range(len(team_reward_vec)):
+                    joint_history[t] += [team_reward_vec[t]]
                 # Go through all the steps and save the info at each step
                 for joint_step in joint_history:
                     step_info = []
@@ -456,6 +495,7 @@ class CooperativeCoevolutionaryAlgorithm():
         '''End multiple teams per evaluation'''
 
     def overwriteEvalWithCritic(self, eval_infos):
+        # TODO: This function won't work with new reward saving code. Fix if I'm going to use this function later.
         """This function takes in eval_infos and overwrites the rewards attribute with fitnesses generated by fitness critics/alignment"""
         for eval_info in eval_infos:
             critic_rewards = []
@@ -464,7 +504,7 @@ class CooperativeCoevolutionaryAlgorithm():
                 t = np.array(t)
                 critic_rewards.append(self.critic.evaluate(t, idx))
 
-            # New rewards are the critic rewards, vector of Gs, and aggregated G
+            # New rewards are the critic rewards, aggregated G, and vector of Gs,
             new_rewards = tuple( [r for r in critic_rewards] + list(eval_info.rewards[-2:]))
 
             eval_info.rewards = new_rewards
@@ -506,7 +546,6 @@ class CooperativeCoevolutionaryAlgorithm():
             eval_infos = self.evaluateEvaluationTeam(offspring)
 
             if self.critic is not None:
-                self.overwriteEvalWithCritic(eval_infos)
                 self.critic.train()
 
             # Save fitnesses

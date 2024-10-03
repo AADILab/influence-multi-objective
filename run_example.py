@@ -4,4 +4,4 @@ import argparse
 from influence_moo.evo.coevolution import runCCEA
 
 if __name__ == "__main__":
-    runCCEA("~/influence-multi-objective/example_results/config.yaml")
+    runCCEA("~/influence-multi-objective/example_results/D-Indirect-Step/config.yaml")
