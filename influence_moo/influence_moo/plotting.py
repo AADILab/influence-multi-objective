@@ -147,11 +147,13 @@ def process_experiment(root_dir):
     fig.savefig(title+".png")
 
 def process_experiment2(root_dir, window_size):
+    print(root_dir)
     fig, ax = plt.subplots(1,1)
     color_map =  ['#006BA4', '#FF800E', '#ABABAB', '#595959', '#5F9ED1', '#C85200', '#898989', '#A2C8EC', '#FFBC79', '#CFCFCF']
     handles = []
     labels = []
     dis_dir = root_dir/"D-Indirect-Step"
+    print(dis_dir)
     if os.path.exists(dis_dir):
         h1c, h2c = process_trials(dis_dir, color=color_map[1], ax=ax, window_size=window_size)
         handles.append(h1c)

@@ -461,7 +461,10 @@ class CooperativeCoevolutionaryAlgorithm():
                 for i in range(self.num_asvs):
                     agent_reward_vec = eval_info.rewards.agents_vec[i]
                     for t in range(len(agent_reward_vec)):
-                        joint_history[t] += [agent_reward_vec[t][0]]
+                        try:
+                            joint_history[t] += [agent_reward_vec[t][0]]
+                        except (IndexError, TypeError):
+                            joint_history[t] += [agent_reward_vec[t]]
                 # Save team reward info
                 team_reward_vec = eval_info.rewards.G_vec
                 for t in range(len(team_reward_vec)):
