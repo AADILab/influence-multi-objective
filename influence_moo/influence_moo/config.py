@@ -7,6 +7,13 @@ def load_config(config_dir):
     with open(os.path.expanduser(config_dir), 'r') as file:
         return yaml.safe_load(file)
 
+def write_config(config, config_dir):
+    folder_dir = Path(os.path.expanduser(config_dir)).parent
+    if not os.path.exists(folder_dir):
+        os.makedirs(folder_dir, exist_ok = True)
+    with open(config_dir, 'w') as file:
+        yaml.dump(config, file, default_flow_style=False)
+
 def merge_dicts(dict1, dict2):
     """Merge dict2 into dict1 recursively (ie: any nested dictionaries). For any conflicts, dict2 overwrites dict1"""
     keys = [k for k in dict2]
@@ -76,13 +83,6 @@ def expand_directory_dict(directory_dict, base_config):
     for dir_str in directory_dict:
         directory_dict[dir_str] = merge_base(base_config, directory_dict[dir_str])
 
-def write_config(config, config_dir):
-    folder_dir = Path(os.path.expanduser(config_dir)).parent
-    if not os.path.exists(folder_dir):
-        os.makedirs(folder_dir, exist_ok = True)
-    with open(config_dir, 'w') as file:
-        yaml.dump(config, file, default_flow_style=False)
-
 def write_directory_dict(directory_dict, top_dir):
     for dir in directory_dict:
         config_dir = Path(os.path.expanduser(top_dir))/dir/'config.yaml'
@@ -101,3 +101,36 @@ def write_config_tree(sweep_config_dir, top_write_dir):
     expand_directory_dict(directory_dict, sweep_config['base_dict'])
     # Write each set of parameters as a config file
     write_directory_dict(directory_dict, top_write_dir)
+
+def contractuser(path: str):
+    home_dir = os.path.expanduser('~')
+    if path.startswith(home_dir):
+        return path.replace(home_dir, '~')
+    return path
+
+def get_config_dirs(top_dir):
+    config_dirs = []
+    for dirpath, _, filenames in os.walk(os.path.expanduser(top_dir)):
+        for filename in filenames:
+            if filename == 'config.yaml':
+                config_dir = contractuser(dirpath)+'/config.yaml'
+                config_dirs.append(config_dir)
+    return config_dirs
+
+def generate_commands(config_dirs, seperate_trials=True):
+    """Generate python commands to run configs in config_dirs"""
+    commands = []
+    for config_dir in config_dirs:
+        command_start = 'python ~/influence-multi-objective/influence_moo/influence_moo/run_cli.py '
+        if seperate_trials:
+            # Seperate trials means we generate a different command for running each trial
+            config = load_config(config_dir)
+            num_trials = config['experiment']['num_trials']
+            for t in range(num_trials):
+                command = command_start + config_dir + ' -t ' + str(t)
+                commands.append(command)
+        else:
+            # Running trials together means each config gets one command (rather than one command per trial)
+            command = command_start + config_dir
+            commands.append(command)
+    return commands
