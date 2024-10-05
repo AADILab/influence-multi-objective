@@ -1,93 +1,106 @@
-rewards:
-  G:
-    rewards:asv_reward: global
-    rewards:which_critic: none
-  D:
-    rewards:asv_reward: difference
-    rewards:which_critic: none
-  D-Indirect-Step:
-    rewards:asv_reward: indirect_difference_team
-    rewards:influence_type: granular
-    influence_heuristic: no_crash_line_of_sight
-    rewards:which_critic: none
-  D-Indirect-Traj:
-    rewards:asv_reward: indirect_difference_team
-    rewards:influence_type: granular
-    influence_heuristic: no_crash_line_of_sight
-    rewards:which_critic: none
-  "Fitness Critic":
-    rewards:which_critic: fitness_critic
-  Alignment:
-    rewards:which_critic: alignment
-parameter_sets:
-  simple_a:
-    env:asvs:
-    - position:
-      - 3.5
-      - 3.5
-    env:auvs:
-    - path:
-      - - 3.5
-        - 0.5
-      - - 0.5
-        - 0.5
-      - - 0.5
+parameter_dicts:
+  - simple_a:
+      env:asvs:
+      - position:
         - 3.5
-  simple_b:
-    env:asvs:
-    - position:
-      - 3.5
-      - 3.5
-    env:auvs:
-    - path:
-      - - 0.5
-        - 0.5
-      - - 0.5
         - 3.5
-  simple_c:
-    env:asvs:
-    - position:
-      - 0.5
-      - 3.5
-    env:auvs:
-    - path:
-      - - 0.5
-        - 0.5
-      - - 0.5
+      env:auvs:
+      - path:
+        - - 3.5
+          - 0.5
+        - - 0.5
+          - 0.5
+        - - 0.5
+          - 3.5
+    simple_b:
+      env:asvs:
+      - position:
         - 3.5
-  simple_d:
-    env:asvs:
-    - position:
-      - 3.5
-      - 0.5
-    env:auvs:
-    - path:
-      - - 0.5
-        - 0.5
-      - - 0.5
         - 3.5
-  simple_e:
-    env:asvs:
-    - position:
-      - 0.65
-      - 0.5
-    env:auvs:
-    - path:
-      - - 0.5
+      env:auvs:
+      - path:
+        - - 0.5
+          - 0.5
+        - - 0.5
+          - 3.5
+    simple_c:
+      env:asvs:
+      - position:
         - 0.5
-      - - 0.5
         - 3.5
-  simple_f:
-    env:asvs:
-    - position:
-      - 3.5
-      - 0.65
-    env:auvs:
-    - path:
-      - - 3.5
-        - 0.5
-      - - 0.5
-        - 0.5
-      - - 0.5
+      env:auvs:
+      - path:
+        - - 0.5
+          - 0.5
+        - - 0.5
+          - 3.5
+    simple_d:
+      env:asvs:
+      - position:
         - 3.5
+        - 0.5
+      env:auvs:
+      - path:
+        - - 0.5
+          - 0.5
+        - - 0.5
+          - 3.5
+    simple_e:
+      env:asvs:
+      - position:
+        - 0.65
+        - 0.5
+      env:auvs:
+      - path:
+        - - 0.5
+          - 0.5
+        - - 0.5
+          - 3.5
+    simple_f:
+      env:asvs:
+      - position:
+        - 3.5
+        - 0.65
+      env:auvs:
+      - path:
+        - - 3.5
+          - 0.5
+        - - 0.5
+          - 0.5
+        - - 0.5
+          - 3.5
+  - include_elites:
+      ccea:selection:n_elites_binary_tournament:include_elites_in_tournament: true
+    no_elites:
+      ccea:selection:n_elites_binary_tournament:include_elites_in_tournament: false
+  - raytrace_0_5:
+      env:asv_params:raytrace_distance: 0.5
+    raytrace_1_0:
+      env:asv_params:raytrace_distance: 1.0
+    raytrace_2_0:
+      env:asv_params:raytrace_distance: 2.0
+    raytrace_3_0:
+      env:asv_params:raytrace_distance: 3.0
+    raytrace_100_0:
+      env:asv_params:raytrace_distance: 100.0
+  - G:
+      rewards:asv_reward: global
+      rewards:which_critic: none
+    D:
+      rewards:asv_reward: difference
+      rewards:which_critic: none
+    D-Indirect-Step:
+      rewards:asv_reward: indirect_difference_team
+      rewards:influence_type: granular
+      influence_heuristic: no_crash_line_of_sight
+      rewards:which_critic: none
+    D-Indirect-Traj:
+      rewards:asv_reward: indirect_difference_team
+      rewards:influence_type: granular
+      influence_heuristic: no_crash_line_of_sight
+      rewards:which_critic: none
+    "Fitness Critic":
+      rewards:which_critic: fitness_critic
+    Alignment:
+      rewards:which_critic: alignment
 
