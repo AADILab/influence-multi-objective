@@ -1,6 +1,7 @@
 import yaml
 import os
 from copy import deepcopy
+from pathlib import Path
 
 def load_config(config_dir):
     with open(os.path.expanduser(config_dir), 'r') as file:
@@ -70,3 +71,33 @@ def create_directory_dict(consolidated_dict, path_len, path_list=[], directory_d
             create_directory_dict(consolidated_dict[key], path_len, new_path_list, directory_dict)
 
     return directory_dict
+
+def expand_directory_dict(directory_dict, base_config):
+    for dir_str in directory_dict:
+        directory_dict[dir_str] = merge_base(base_config, directory_dict[dir_str])
+
+def write_config(config, config_dir):
+    folder_dir = Path(os.path.expanduser(config_dir)).parent
+    if not os.path.exists(folder_dir):
+        os.makedirs(folder_dir, exist_ok = True)
+    with open(config_dir, 'w') as file:
+        yaml.dump(config, file, default_flow_style=False)
+
+def write_directory_dict(directory_dict, top_dir):
+    for dir in directory_dict:
+        config_dir = Path(os.path.expanduser(top_dir))/dir/'config.yaml'
+        write_config(directory_dict[dir], config_dir)
+
+def write_config_tree(sweep_config_dir, top_write_dir):
+    # Load in sweep config with base parameters and sweep parameters
+    sweep_config = load_config(sweep_config_dir)
+    # Expand the keys in the config - ['key1:key2:key3'] to ['key1']['key2']['key3']
+    expand_keys(sweep_config)
+    # Consolidate all of the sweep parameters into a "tree" where each leaf is a unique parameter set
+    consolidated_dict = consolidate_parameters(sweep_config['parameter_dicts'])
+    # Create a dictionary where each key is a directory and the value is the unique parameter set
+    directory_dict = create_directory_dict(consolidated_dict, path_len=len(sweep_config['parameter_dicts'])-1)
+    # Now each value is a full set of parameters, including the base parameters
+    expand_directory_dict(directory_dict, sweep_config['base_dict'])
+    # Write each set of parameters as a config file
+    write_directory_dict(directory_dict, top_write_dir)
