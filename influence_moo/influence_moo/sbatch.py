@@ -29,7 +29,7 @@ def write_command_sh_files(batch_dir_root, file_dirs, commands, file_str_start):
 def generate_sbatch_commands(file_dirs):
     sbatch_commands = []
     for f in file_dirs:
-        sbatch_commands.append('sbatch \'' + str(f) + '\'')
+        sbatch_commands.append('sbatch ' + str(f))
     return sbatch_commands
 
 def write_sbatch_sh_file(batch_dir_root, sbatch_commands):

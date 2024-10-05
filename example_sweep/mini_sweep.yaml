@@ -183,7 +183,7 @@ parameter_dicts:
       rewards:influence_type: granular
       influence_heuristic: no_crash_line_of_sight
       rewards:which_critic: none
-    "Fitness Critic":
+    Fitness-Critic:
       rewards:which_critic: fitness_critic
     Alignment:
       rewards:which_critic: alignment
