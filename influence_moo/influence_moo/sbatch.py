@@ -1,4 +1,5 @@
 import os
+import stat
 from pathlib import Path
 from influence_moo.config import get_config_dirs, generate_commands, contractuser
 
@@ -33,8 +34,10 @@ def generate_sbatch_commands(file_dirs):
 
 def write_sbatch_sh_file(batch_dir_root, sbatch_commands):
     batch_file_str = '\n'.join(sbatch_commands)+'\n'
-    with open(os.path.expanduser(batch_dir_root+'/sbatch.sh'), 'w') as file:
+    sbatch_dir = os.path.expanduser(batch_dir_root+'/sbatch.sh')
+    with open(sbatch_dir, 'w') as file:
         file.write(batch_file_str)
+    os.chmod(sbatch_dir, os.stat(sbatch_dir).st_mode | stat.S_IXUSR | stat.S_IXGRP | stat.S_IXOTH)
 
 def write_sbatch_executables(top_dir, batch_dir_root):
     # Define the string you want to write
