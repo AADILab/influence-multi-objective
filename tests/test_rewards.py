@@ -182,10 +182,144 @@ class TestRewards(unittest.TestCase):
 
         self.spoof_0 = Spoof(pois, auvs, asvs, connectivity_grid, collision_step_size=0.1)
 
+    def setup_spoof_2(self):
+        """This spoofs a case where an ASV should get full credit for an
+        AUV with all_or_nothing influence compared to nothing with the granular influence
+
+        Note: This is using a real trajectory generated during training
+        """
+        connectivity_grid = np.ones((4,4))
+        connectivity_grid[1:-1,1:-1] = 0
+
+        pois = [
+            POI(position=np.array([0.5, 3.5]), value=1.0, observation_radius=1.0)
+        ]
+        poi_positions = np.array([poi.position for poi in pois])
+
+        auvs = [
+            AUV(targets=[None], max_velocity=None)
+        ]
+
+        auvs[0].path = [
+            [3.5, 0.5],
+            [2.46492167723104, 0.54794255386042],
+            [1.52754177588824, 0.60003576391963],
+            [0.627448242663943, 0.656502962946682],
+            [0.686156337860044, 1.71753801059843],
+            [0.749513145700201, 2.81646328510453],
+            [0.817641391038405, 3.84840642303689],
+            [0.890594861485513, 3.78346500797651],
+            [0.968339463784563, 3.72359538785663],
+            [1.05073405140098, 3.66862558295288],
+            [1.13751287485983, 3.61832847193239],
+            [1.22827208256886, 3.57244033112971],
+            [1.32246306857194, 3.53067621488824],
+            [1.41939541199211, 3.49274215157509],
+            [1.51825148775715, 3.45834441280356],
+            [1.61811347151084, 3.42719625667033],
+            [1.71800154678644, 3.39902259119314],
+            [1.81692003304202, 3.37356298888847],
+            [1.9139064480889, 3.35057343598531],
+            [2.00807774032222, 3.3298271394435],
+            [2.09866836749061, 3.31111465352669]
+        ]
+
+        auvs[0].crash_history = [
+            False,
+            False,
+            False,
+            False,
+            False,
+            False,
+            False,
+            False,
+            False,
+            False,
+            False,
+            False,
+            False,
+            False,
+            False,
+            False,
+            False,
+            False,
+            False,
+            False,
+            False
+        ]
+
+        asvs = [
+            ASV(position=[3.5, 3.5], auvs=auvs, connectivity_grid=connectivity_grid, policy_function=None)
+        ]
+
+        asvs[0].path = [
+            [3.5, 3.5],
+            [3.89795855049247, 2.50046186538983],
+            [4.05200755937207, 2.37291225596976],
+            [4.05200755937207, 2.37291225596976],
+            [4.05200755937207, 2.37291225596976],
+            [4.05200755937207, 2.37291225596976],
+            [4.05200755937207, 2.37291225596976],
+            [4.05200755937207, 2.37291225596976],
+            [4.05200755937207, 2.37291225596976],
+            [4.05200755937207, 2.37291225596976],
+            [4.05200755937207, 2.37291225596976],
+            [4.05200755937207, 2.37291225596976],
+            [4.05200755937207, 2.37291225596976],
+            [4.05200755937207, 2.37291225596976],
+            [4.05200755937207, 2.37291225596976],
+            [4.05200755937207, 2.37291225596976],
+            [4.05200755937207, 2.37291225596976],
+            [4.05200755937207, 2.37291225596976],
+            [4.05200755937207, 2.37291225596976],
+            [4.05200755937207, 2.37291225596976],
+            [4.05200755937207, 2.37291225596976]
+        ]
+
+        asvs[0].crash_history = [
+            False,
+            False,
+            True,
+            True,
+            True,
+            True,
+            True,
+            True,
+            True,
+            True,
+            True,
+            True,
+            True,
+            True,
+            True,
+            True,
+            True,
+            True,
+            True,
+            True,
+            True
+        ]
+
+        if self.VISUALIZE:
+            fig, ax = plt.subplots(1,1,dpi=100)
+            plot_grid(connectivity_grid, cmap='tab10_r')
+            plot_pts(poi_positions, ax, marker='o', fillstyle='none', linestyle='none',color='tab:green')
+            plot_pts(auvs[0].path, ax, ls=(0, (1,2)), color='pink', lw=1)
+            plot_pts(asvs[0].path, ax, marker='+', color='orange')
+            ax.set_title("[Spoof2] Rollout for Testing Rewards")
+            plt.show()
+
+        self.spoof_2 = Spoof(pois, auvs, asvs, connectivity_grid, collision_step_size=0.1)
+
     def get_spoof_0(self):
         if not "spoof_0" in self.__dict__:
             self.setup_spoof_0()
         return self.spoof_0
+
+    def get_spoof_2(self):
+        if not "spoof_2" in self.__dict__:
+            self.setup_spoof_2()
+        return self.spoof_2
 
     def test_spoof_0a(self):
         """Test granular indirect difference reward to auvs' difference rewards as multiple rewards
@@ -473,6 +607,46 @@ class TestRewards(unittest.TestCase):
         self.assertTrue(np.isclose(expected_G, G), "G from rewards.compute() does not match expected G")
         self.assertTrue(np.allclose(expected_rewards, rewards),
             "ASV rewards from rewards.compute() does not match expected rewards")
+
+    def test_spoof_2(self):
+        """Test all_or_nothing influence vs granular influence"""
+        spoof_2 = self.get_spoof_2()
+        pois, auvs, asvs, connectivity_grid, collision_step_size = \
+            spoof_2.pois, spoof_2.auvs, spoof_2.asvs, spoof_2.connectivity_grid, spoof_2.collision_step_size
+        config_an = {
+            "rewards":
+            {
+                "influence_heuristic": "no_crash_line_of_sight",
+                "influence_type": "all_or_nothing",
+                "trajectory_influence_threshold": 0.0,
+                "auv_reward": "none",
+                "asv_reward": "indirect_difference_team",
+                "multi_reward": "single",
+                "distance_threshold": 0.0
+            }
+        }
+
+        rewards_an = Rewards(
+            pois = pois,
+            connectivity_grid = connectivity_grid,
+            collision_step_size = collision_step_size,
+            config = config_an
+        )
+
+        agent_rewards_an, G, _, _ = rewards_an.compute(auvs, asvs)
+        self.assertTrue(np.isclose(agent_rewards_an[0], G))
+
+        config_g = deepcopy(config_an)
+        config_g['rewards']['influence_type'] = 'granular'
+
+        rewards_g = Rewards(
+            pois = pois,
+            connectivity_grid = connectivity_grid,
+            collision_step_size = collision_step_size,
+            config = config_g
+        )
+        agent_rewards_g, G, _, _ = rewards_g.compute(auvs, asvs)
+        self.assertTrue(not np.isclose(agent_rewards_g[0] ,G))
 
 if __name__ == '__main__':
     unittest.main()
