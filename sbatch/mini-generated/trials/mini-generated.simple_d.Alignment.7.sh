@@ -8,4 +8,4 @@ module load python/3.10
 source ~/venv/influence/bin/activate
 
 
-python ~/influence-multi-objective/influence_moo/influence_moo/run_cli.py ~/influence-multi-objective/results/mini-generated/simple_d/Alignment/config.yaml -t 7
+python ~/influence-multi-objective/influence_moo/influence_moo/run_cli.py '~/influence-multi-objective/results/mini-generated/simple_d/Alignment/config.yaml' -t 7

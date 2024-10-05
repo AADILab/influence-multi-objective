@@ -9,7 +9,7 @@ def generate_sh_command_dirs(batch_dir_root, commands):
     batch_dir = Path(contractuser(batch_dir_root))/spacer
 
     for c in commands:
-        experiment_name = c.split(' ')[2].replace('/', '.').replace('~.influence-multi-objective.results.', '').replace('.config.yaml','')
+        experiment_name = c.split('\'')[1].replace('/', '.').replace('~.influence-multi-objective.results.', '').replace('.config.yaml','')
         trial_num = c.split(' ')[-1]
         file_name = experiment_name +'.'+trial_num+'.sh'
         file_dir = batch_dir / file_name
@@ -28,7 +28,7 @@ def write_command_sh_files(batch_dir_root, file_dirs, commands, file_str_start):
 def generate_sbatch_commands(file_dirs):
     sbatch_commands = []
     for f in file_dirs:
-        sbatch_commands.append('sbatch ' + str(f))
+        sbatch_commands.append('sbatch \'' + str(f) + '\'')
     return sbatch_commands
 
 def write_sbatch_sh_file(batch_dir_root, sbatch_commands):

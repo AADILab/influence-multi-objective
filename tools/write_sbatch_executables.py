@@ -1,6 +1,6 @@
 """Write sbatch executable files for configs nested in the specified top directory
 Example Usage:
-python tools/write_sbatch_executable.py ~/influence-multi-objective/results/mini-generated ~/influence-multi-objective/sbatch/mini-generated-test
+python tools/write_sbatch_executables.py ~/influence-multi-objective/results/mini-generated ~/influence-multi-objective/sbatch/mini-generated-test
 """
 
 import argparse
