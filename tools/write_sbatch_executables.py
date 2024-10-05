@@ -3,7 +3,6 @@ Example Usage:
 python tools/write_sbatch_executable.py ~/influence-multi-objective/results/mini-generated ~/influence-multi-objective/sbatch/mini-generated-test
 """
 
-import os
 import argparse
 from influence_moo.sbatch import write_sbatch_executables
 

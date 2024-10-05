@@ -1,12 +1,12 @@
 import os
 from pathlib import Path
-from influence_moo.config import get_config_dirs, generate_commands
+from influence_moo.config import get_config_dirs, generate_commands, contractuser
 
 def generate_sh_command_dirs(batch_dir_root, commands):
     file_dirs = []
 
     spacer = 'trials'
-    batch_dir = Path(batch_dir_root)/spacer
+    batch_dir = Path(contractuser(batch_dir_root))/spacer
 
     for c in commands:
         experiment_name = c.split(' ')[2].replace('/', '.').replace('~.influence-multi-objective.results.', '').replace('.config.yaml','')
