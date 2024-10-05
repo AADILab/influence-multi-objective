@@ -247,9 +247,9 @@ class Rewards():
                     asvc.position = asv.path[i]
                     asvc.crashed = asv.crash_history[i]
                     auvc = deepcopy(auv)
-                    auv.position = asv.path[i]
-                    auv.crashed = auv.crash_history[i]
-                    influence_array[i, a] += self.influence(asv, auv)
+                    auvc.position = auv.path[i]
+                    auvc.crashed = auv.crash_history[i]
+                    influence_array[i, a] += self.influence(asvc, auvc)
 
         return influence_array
 

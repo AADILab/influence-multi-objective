@@ -88,12 +88,15 @@ class TestRewards(unittest.TestCase):
             ASV(position=None, auvs=auvs, connectivity_grid=None, policy_function=None)
         ]
 
+        asvs[0].path = np.array([[8,8] for _ in range(5)], dtype=np.float32)
+        asvs[1].path = np.array([[13,8] for _ in range(5)], dtype=np.float32)
+
         for id, asv in enumerate(asvs):
             # Track asvs during testing
             asv.id = id
-
-        asvs[0].path = np.array([[8,8] for _ in range(5)], dtype=np.float32)
-        asvs[1].path = np.array([[13,8] for _ in range(5)], dtype=np.float32)
+            # Add crash history
+            for _ in asv.path:
+                asv.crash_history.append(False)
 
         if self.VISUALIZE:
             fig, ax = plt.subplots(1,1,dpi=100)
