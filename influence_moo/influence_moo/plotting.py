@@ -173,11 +173,11 @@ def process_experiment2(root_dir, window_size):
         h1o, h2o = process_trials(d_dir, color=color_map[3], ax=ax, window_size=window_size)
         handles.append(h1o)
         labels.append("D")
-    f_dir = root_dir/"Fitness Critic"
+    f_dir = root_dir/"Fitness-Critic"
     if os.path.exists(f_dir):
         h1f, h2f = process_trials(f_dir, color=color_map[4], ax=ax, window_size=window_size)
         handles.append(h1f)
-        labels.append("Fitness Critic")
+        labels.append("Fitness-Critic")
     a_dir = root_dir/"Alignment"
     if os.path.exists(a_dir):
         h1a, h2a = process_trials(a_dir, color=color_map[5], ax=ax, window_size=window_size)
