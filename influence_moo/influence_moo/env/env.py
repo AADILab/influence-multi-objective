@@ -103,6 +103,10 @@ class Rewards():
 
         self.influence_heuristic = config['rewards']['influence_heuristic']
         self.influence_type = config['rewards']['influence_type']
+        self.influence_scope = 'local'
+        # Clever trick for backwards compatibility with old configs ;)
+        if 'influence_scope' in config['rewards']:
+            self.influence_scope = config['rewards']['influence_scope']
         self.trajectory_influence_threshold = config['rewards']['trajectory_influence_threshold']
         self.auv_reward = config['rewards']['auv_reward']
         self.asv_reward = config['rewards']['asv_reward']
@@ -317,20 +321,40 @@ class Rewards():
             return [0.0 for asv in asvs], G, [[0.0 for _ in range(num_steps)] for asv in asvs],G_vec
         # Indirect difference reward for ASVs based on indirect contribution to team
         elif self.asv_reward == "indirect_difference_team" or self.asv_reward == "indirect_difference_auv":
-            # Create influence array that tells us how much each AUV was influenced
-            influence_array = self.influence_array(auvs=auvs, asvs=asvs)
             # Copy asvs with asv j removed
             asvs_minus_j_list = [
                 remove_agent(asvs, asv_ind) for asv_ind in range(len(asvs))
             ]
-            # Create counterfactual influence arrays when we remove each asv
-            counterfactual_influence_list = [
-                self.influence_array(auvs, asvs_minus_j) for asvs_minus_j in asvs_minus_j_list
-            ]
-            # Each asv gets an influence array that is (influence) - (counterfactual influence with that asv removed)
-            influence_j_list = [
-                influence_array - counterfactual_influence for counterfactual_influence in counterfactual_influence_list
-            ]
+            # For influence, we're going to pretend each asv is the only asv in the system
+            if self.influence_scope == 'local':
+                influence_j_list = [
+                    self.influence_array(auvs=auvs, asvs=[asv]) for asv in asvs
+                ]
+            # Each asv will get credit for everyone's influence
+            elif self.influence_scope == 'system':
+                # Create influence array that tells us how much each AUV was influenced
+                influence_array = self.influence_array(auvs=auvs, asvs=asvs)
+                # Mask this. Anything greater than 1 becomes 1
+                influence_array[influence_array > 1] = 1
+                # Now everyone gets this array
+                influence_j_list = [
+                    influence_array for asv in asvs
+                ]
+            # Each asv gets credit based on the difference between system influence
+            # with that asvs and system influence with that asv removed
+            elif self.influence_scope == 'difference':
+                # Create influence array that tells us how much each AUV was influenced
+                influence_array = self.influence_array(auvs=auvs, asvs=asvs)
+                # Mask
+                influence_array[influence_array > 1] = 1
+                # Create counterfactual influence arrays when we remove each asv
+                counterfactual_influence_list = [
+                    self.influence_array(auvs, asvs_minus_j) for asvs_minus_j in asvs_minus_j_list
+                ]
+                # Each asv gets an influence array that is (influence) - (counterfactual influence with that asv removed)
+                influence_j_list = [
+                    influence_array - counterfactual_influence for counterfactual_influence in counterfactual_influence_list
+                ]
             if self.influence_type == "all_or_nothing":
                 # Create an influence vector for each auv of how much each avs influenced it
                 auv_arrs = [np.zeros((len(asvs),)) for auv in auvs]

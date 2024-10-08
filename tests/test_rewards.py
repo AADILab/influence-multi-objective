@@ -28,8 +28,9 @@ class Spoof():
         self.collision_step_size = collision_step_size
 
 class TestRewards(unittest.TestCase):
-    def setUp(self):
-        self.VISUALIZE = False
+    @classmethod
+    def setUpClass(cls):
+        cls.VISUALIZE = False
 
     def setup_spoof_0(self):
         # Spoof a rollout
@@ -108,10 +109,10 @@ class TestRewards(unittest.TestCase):
             plot_pts(asvs[0].path, ax, marker='+', color='orange')
             plot_pts(asvs[1].path, ax, marker='+', color='tab:cyan')
             plot_pts(np.array([auvs[0].path[-2]]), ax, marker='x', color='pink')
-            ax.set_title("Rollout for Testing Rewards")
+            ax.set_title("[Spoof0] Rollout for Testing Rewards")
             plt.show()
 
-        self.spoof_0 = Spoof(pois, auvs, asvs, connectivity_grid, collision_step_size=0.1)
+        self.__class__.spoof_0 = Spoof(pois, auvs, asvs, connectivity_grid, collision_step_size=0.1)
 
     def setup_spoof_1(self):
         """This rollout tests if an AUV crashes"""
@@ -180,7 +181,7 @@ class TestRewards(unittest.TestCase):
             ax.set_title("Rollout for Testing Rewards")
             plt.show()
 
-        self.spoof_0 = Spoof(pois, auvs, asvs, connectivity_grid, collision_step_size=0.1)
+        self.__class__.spoof_1 = Spoof(pois, auvs, asvs, connectivity_grid, collision_step_size=0.1)
 
     def setup_spoof_2(self):
         """This spoofs a case where an ASV should get full credit for an
@@ -200,7 +201,7 @@ class TestRewards(unittest.TestCase):
             AUV(targets=[None], max_velocity=None)
         ]
 
-        auvs[0].path = [
+        auvs[0].path = np.array([
             [3.5, 0.5],
             [2.46492167723104, 0.54794255386042],
             [1.52754177588824, 0.60003576391963],
@@ -222,7 +223,7 @@ class TestRewards(unittest.TestCase):
             [1.9139064480889, 3.35057343598531],
             [2.00807774032222, 3.3298271394435],
             [2.09866836749061, 3.31111465352669]
-        ]
+        ], dtype=np.float32)
 
         auvs[0].crash_history = [
             False,
@@ -252,7 +253,7 @@ class TestRewards(unittest.TestCase):
             ASV(position=[3.5, 3.5], auvs=auvs, connectivity_grid=connectivity_grid, policy_function=None)
         ]
 
-        asvs[0].path = [
+        asvs[0].path = np.array([
             [3.5, 3.5],
             [3.89795855049247, 2.50046186538983],
             [4.05200755937207, 2.37291225596976],
@@ -274,7 +275,7 @@ class TestRewards(unittest.TestCase):
             [4.05200755937207, 2.37291225596976],
             [4.05200755937207, 2.37291225596976],
             [4.05200755937207, 2.37291225596976]
-        ]
+        ], dtype=np.float32)
 
         asvs[0].crash_history = [
             False,
@@ -309,17 +310,66 @@ class TestRewards(unittest.TestCase):
             ax.set_title("[Spoof2] Rollout for Testing Rewards")
             plt.show()
 
-        self.spoof_2 = Spoof(pois, auvs, asvs, connectivity_grid, collision_step_size=0.1)
+        self.__class__.spoof_2 = Spoof(pois, auvs, asvs, connectivity_grid, collision_step_size=0.1)
+
+    def setup_spoof_3(self):
+        """This spoofs a case that has different outcomes depending on influence scope"""
+        connectivity_grid = np.ones((7,3))
+        connectivity_grid[3,:] = 0
+
+        pois = [
+            POI(position=np.array([1.0, 1.0]), value=1.0, observation_radius=1.0),
+            POI(position=np.array([5.0, 1.0]), value=1.0, observation_radius=1.0)
+        ]
+        poi_positions = np.array([poi.position for poi in pois])
+
+        auvs = [
+            AUV(targets=[None], max_velocity=None),
+            AUV(targets=[None], max_velocity=None)
+        ]
+        auvs[0].path = np.array([
+            [1.0, 1.0]
+        ], dtype=np.float32)
+        auvs[1].path = np.array([
+            [5.0, 1.0]
+        ], dtype=np.float32)
+
+        asvs = [
+            ASV(position=np.array([2.0,1.0]),auvs=auvs, connectivity_grid=connectivity_grid, policy_function=None),
+            ASV(position=np.array([1.0,2.0]),auvs=auvs, connectivity_grid=connectivity_grid, policy_function=None),
+            ASV(position=np.array([6.0,1.0]),auvs=auvs, connectivity_grid=connectivity_grid, policy_function=None)
+        ]
+        for asv in asvs:
+            asv.path = np.array([asv.position], dtype=np.float32)
+            asv.crash_history = [False]
+
+        if self.VISUALIZE:
+            fig, ax = plt.subplots(1,1,dpi=100)
+            plot_grid(connectivity_grid, cmap='tab10_r')
+            plot_pts(poi_positions, ax, marker='o', fillstyle='none', linestyle='none',color='tab:green', markersize=20)
+            for auv in auvs:
+                plot_pts(auv.path, ax, ls=(0, (1,2)), color='pink', lw=1, marker='s')
+            for asv in asvs:
+                plot_pts(asv.path, ax, marker='+', color='orange')
+            ax.set_title("[Spoof3] Rollout for Testing Rewards")
+            plt.show()
+
+        self.spoof_3 = Spoof(pois, auvs, asvs, connectivity_grid, collision_step_size=0.1)
 
     def get_spoof_0(self):
-        if not "spoof_0" in self.__dict__:
+        if not 'spoof_0' in self.__class__.__dict__:
             self.setup_spoof_0()
         return self.spoof_0
 
     def get_spoof_2(self):
-        if not "spoof_2" in self.__dict__:
+        if not "spoof_2" in self.__class__.__dict__:
             self.setup_spoof_2()
         return self.spoof_2
+
+    def get_spoof_3(self):
+        if not "spoof_3" in self.__class__.__dict__:
+            self.setup_spoof_3()
+        return self.spoof_3
 
     def test_spoof_0a(self):
         """Test granular indirect difference reward to auvs' difference rewards as multiple rewards
@@ -647,6 +697,67 @@ class TestRewards(unittest.TestCase):
         )
         agent_rewards_g, G, _, _ = rewards_g.compute(auvs, asvs)
         self.assertTrue(not np.isclose(agent_rewards_g[0] ,G))
+
+    def test_spoof_3(self):
+        """Test influence scoping. Local, difference, and system influence"""
+        spoof_3 = self.get_spoof_3()
+        pois, auvs, asvs, connectivity_grid, collision_step_size = \
+            spoof_3.pois, spoof_3.auvs, spoof_3.asvs, spoof_3.connectivity_grid, spoof_3.collision_step_size
+
+        # First try local influence
+        config = {
+            "rewards":
+            {
+                "influence_heuristic": "no_crash_line_of_sight",
+                "influence_type": "granular",
+                "influence_scope": "local",
+                "trajectory_influence_threshold": 0.0,
+                "auv_reward": "none",
+                "asv_reward": "indirect_difference_team",
+                "multi_reward": "single",
+                "distance_threshold": 0.0
+            }
+        }
+        rewards = Rewards(
+            pois=pois,
+            connectivity_grid=connectivity_grid,
+            collision_step_size=collision_step_size,
+            config=config
+        )
+        agent_rewards, G, _, _ = rewards.compute(auvs, asvs)
+        expected_rewards = [1.0, 1.0, 1.0]
+        expected_G = 2.0
+        for a, e in zip(agent_rewards, expected_rewards):
+            self.assertTrue(np.isclose(a,e))
+        self.assertTrue(np.isclose(G, expected_G))
+
+        # Second system influence
+        config["rewards"]["influence_scope"] = "system"
+        rewards = Rewards(
+            pois=pois,
+            connectivity_grid=connectivity_grid,
+            collision_step_size=collision_step_size,
+            config=config
+        )
+        agent_rewards, G, _, _ = rewards.compute(auvs, asvs)
+        expected_rewards = [2.0, 2.0, 2.0]
+        expected_G = 2.0
+        for a, e in zip(agent_rewards, expected_rewards):
+            self.assertTrue(np.isclose(a,e))
+
+        # Third, difference influence
+        config["rewards"]["influence_scope"] = "difference"
+        rewards = Rewards(
+            pois=pois,
+            connectivity_grid=connectivity_grid,
+            collision_step_size=collision_step_size,
+            config=config
+        )
+        agent_rewards, G, _, _ = rewards.compute(auvs, asvs)
+        expected_rewards = [0.0, 0.0, 1.0]
+        expected_G = 2.0
+        for a, e in zip(agent_rewards, expected_rewards):
+            self.assertTrue(np.isclose(a,e))
 
 if __name__ == '__main__':
     unittest.main()
