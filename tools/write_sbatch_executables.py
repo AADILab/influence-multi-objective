@@ -12,8 +12,8 @@ if __name__ == "__main__":
         description="Write sbatch executable files for configs nested in the specified top directory",
         epilog=""
     )
-    parser.add_argument("top_dir")
-    parser.add_argument("batch_dir_root")
+    parser.add_argument("config_directory", help="Top directory of configs that need to be batched")
+    parser.add_argument("sbatch_directory", help="Directory to write sbatch files to")
     args = parser.parse_args()
 
-    write_sbatch_executables(args.top_dir, args.batch_dir_root)
+    write_sbatch_executables(args.config_directory, args.sbatch_directory)

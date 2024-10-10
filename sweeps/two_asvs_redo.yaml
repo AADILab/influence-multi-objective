@@ -1,0 +1,175 @@
+base_dict:
+  ccea:
+    evaluation:
+      multi_evaluation:
+        num_rollouts_per_team: 1
+        num_teams_per_evaluation: 1
+    mutation:
+      independent_probability: 0.5
+      mean: 0.0
+      std_deviation: 1.0
+    num_generations: 10000
+    selection:
+      n_elites_binary_tournament:
+        include_elites_in_tournament: true
+        n_elites: 5
+    subpopulation_size: 30
+    weight_initialization:
+      lower_bound: -1.0
+      upper_bound: 1.0
+  data:
+    save_trajectories:
+      num_gens_between_save: 10
+      switch: true
+  env:
+    asv_params:
+      max_speed: 1.0
+      network:
+        num_hidden:
+        - 10
+      num_asv_bins: 4
+      num_auv_bins: 4
+      num_obstacle_traces: 4
+      observation_type: local
+      raytrace_distance: 100.0
+    auv_params:
+      max_speed: 1.0
+    collision_step_size: 0.1
+    dt: 1
+    t_final: 20
+    waves:
+      x_:
+        a: 0.1
+        b: 1.0
+        c: 0.0
+      y_:
+        a: 0.1
+        b: 1.0
+        c: 0.0
+  experiment:
+    num_trials: 10
+  processing:
+    num_threads: 20
+    use_multiprocessing: true
+  rewards:
+    asv_reward: global
+    auv_reward: none
+    distance_threshold: 5.0
+    influence_heuristic: no_crash_line_of_sight
+    influence_type: all_or_nothing
+    multi_reward: single
+    trajectory_influence_threshold: 0.0
+    which_critic: alignment
+  root_dir: ~/influence-multi-objective
+parameter_dicts:
+  - beta:
+      env:connectivity grid:
+        - [1, 1, 1, 1]
+        - [1, 0, 0, 1]
+        - [1, 0, 0, 1]
+        - [1, 1, 1, 1]
+        - [1, 0, 0, 1]
+        - [1, 0, 0, 1]
+        - [1, 1, 1, 1]
+        - [1, 0, 0, 1]
+        - [1, 0, 0, 1]
+        - [1, 1, 1, 1]
+      env:auvs:
+        - path:
+          - [3.0, 0.5]
+          - [0.5, 0.5]
+          - [0.5, 3.5]
+        - path:
+          - [6.0, 0.5]
+          - [3.5, 0.5]
+          - [3.5, 3.5]
+        - path:
+          - [9.5, 0.5]
+          - [6.5, 0.5]
+          - [6.5, 3.5]
+      env:asvs:
+        - position: [3.5, 3.5]
+        - position: [9.5, 3.5]
+      env:pois:
+        - position: [0.5, 3.5]
+          observation_radius: 1.0
+          value: 1.0
+        - position: [3.5, 3.5]
+          observation_radius: 1.0
+          value: 1.0
+        - position: [6.5, 3.5]
+          observation_radius: 1.0
+          value: 1.0
+    charlie:
+      env:connectivity grid:
+        - [1, 1, 1, 1]
+        - [1, 0, 0, 1]
+        - [1, 0, 0, 1]
+        - [1, 1, 1, 1]
+        - [1, 0, 0, 1]
+        - [1, 0, 0, 1]
+        - [1, 1, 1, 1]
+        - [1, 0, 0, 1]
+        - [1, 0, 0, 1]
+        - [1, 1, 1, 1]
+        - [1, 0, 0, 1]
+        - [1, 0, 0, 1]
+        - [1, 1, 1, 1]
+      env:auvs:
+        - path:
+          - [3.0, 0.5]
+          - [0.5, 0.5]
+          - [0.5, 3.5]
+        - path:
+          - [6.0, 0.5]
+          - [3.5, 0.5]
+          - [3.5, 3.5]
+        - path:
+          - [9.0, 0.5]
+          - [6.5, 0.5]
+          - [6.5, 3.5]
+        - path:
+          - [12.5, 0.5]
+          - [9.5, 0.5]
+          - [9.5, 3.5]
+      env:asvs:
+        - position: [3.5, 3.5]
+        - position: [12.5, 3.5]
+      env:pois:
+        - position: [0.5, 3.5]
+          observation_radius: 1.0
+          value: 1.0
+        - position: [3.5, 3.5]
+          observation_radius: 1.0
+          value: 1.0
+        - position: [6.5, 3.5]
+          observation_radius: 1.0
+          value: 1.0
+        - position: [9.5, 3.5]
+          observation_radius: 1.0
+          value: 1.0
+  - G:
+      rewards:asv_reward: global
+      rewards:which_critic: none
+    D-Indirect-Step:
+      rewards:asv_reward: indirect_difference_team
+      rewards:influence_type: granular
+      rewards:influence_heuristic: no_crash_line_of_sight
+      rewards:which_critic: none
+    D-Indirect-Step-System-Influence:
+      rewards:asv_reward: indirect_difference_team
+      rewards:influence_type: granular
+      rewards:influence_heuristic: no_crash_line_of_sight
+      rewards:which_critic: none
+      rewards:influence_scope: system
+    D-Indirect-Step-Difference-Influence:
+      rewards:asv_reward: indirect_difference_team
+      rewards:influence_type: granular
+      rewards:influence_heuristic: no_crash_line_of_sight
+      rewards:which_critic: none
+      rewards:influence_scope: difference
+    D-Indirect-Traj:
+      rewards:asv_reward: indirect_difference_team
+      rewards:influence_type: all_or_nothing
+      rewards:influence_heuristic: no_crash_line_of_sight
+      rewards:which_critic: none

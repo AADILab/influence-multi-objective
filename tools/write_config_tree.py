@@ -12,8 +12,8 @@ if __name__ == "__main__":
         description="Write configs according to a parameter sweep into a corresponding directory tree",
         epilog=""
     )
-    parser.add_argument("sweep_config_dir")
-    parser.add_argument("top_write_dir")
+    parser.add_argument("sweep_config_directory", help="Directory of yaml file with all sweep parameters")
+    parser.add_argument("top_write_directory", help="Top directory to write configs to")
     args = parser.parse_args()
 
-    write_config_tree(args.sweep_config_dir, args.top_write_dir)
+    write_config_tree(args.sweep_config_directory, args.top_write_directory)
