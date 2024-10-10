@@ -1,8 +1,15 @@
 #!/bin/bash
 
-# python ~/influence-multi-objective/influence_moo/influence_moo/run_cli.py '~/influence-multi-objective/results/simple_a/rewardsaving3/D-Indirect-Step/config.yaml'
-# python ~/influence-multi-objective/influence_moo/influence_moo/run_cli.py '~/influence-multi-objective/results/simple_a/rewardsaving3/Fitness Critic/config.yaml'
-# python ~/influence-multi-objective/influence_moo/influence_moo/run_cli.py '~/influence-multi-objective/results/simple_a/rewardsaving3/Alignment/config.yaml'
-# python ~/influence-multi-objective/influence_moo/influence_moo/run_cli.py '~/influence-multi-objective/results/simple_a/rewardsaving3/G/config.yaml'
-# python ~/influence-multi-objective/influence_moo/influence_moo/run_cli.py '~/influence-multi-objective/results/simple_a/rewardsaving3/D-Indirect-Traj/config.yaml'
-python ~/influence-multi-objective/influence_moo/influence_moo/run_cli.py '~/influence-multi-objective/results/two_asvs/alpha/Fitness-Critic/config.yaml'
+source ~/venv/basic/bin/activate
+
+python ~/influence-multi-objective/influence_moo/influence_moo/run_cli.py '~/influence-multi-objective/results/5_squares/mark_pois/D-Indirect-Step/config.yaml'
+python ~/influence-multi-objective/influence_moo/influence_moo/run_cli.py '~/influence-multi-objective/results/5_squares/mark_pois/D-Indirect-Step-Difference-Influence/config.yaml'
+python ~/influence-multi-objective/influence_moo/influence_moo/run_cli.py '~/influence-multi-objective/results/5_squares/mark_pois/D-Indirect-Step-System-Influence/config.yaml'
+python ~/influence-multi-objective/influence_moo/influence_moo/run_cli.py '~/influence-multi-objective/results/5_squares/mark_pois/D-Indirect-Traj/config.yaml'
+python ~/influence-multi-objective/influence_moo/influence_moo/run_cli.py '~/influence-multi-objective/results/5_squares/mark_pois/G/config.yaml'
+
+python ~/influence-multi-objective/influence_moo/influence_moo/run_cli.py '~/influence-multi-objective/results/5_squares/no_marking/D-Indirect-Step/config.yaml'
+python ~/influence-multi-objective/influence_moo/influence_moo/run_cli.py '~/influence-multi-objective/results/5_squares/no_marking/D-Indirect-Step-Difference-Influence/config.yaml'
+python ~/influence-multi-objective/influence_moo/influence_moo/run_cli.py '~/influence-multi-objective/results/5_squares/no_marking/D-Indirect-Step-System-Influence/config.yaml'
+python ~/influence-multi-objective/influence_moo/influence_moo/run_cli.py '~/influence-multi-objective/results/5_squares/no_marking/D-Indirect-Traj/config.yaml'
+python ~/influence-multi-objective/influence_moo/influence_moo/run_cli.py '~/influence-multi-objective/results/5_squares/no_marking/G/config.yaml'
