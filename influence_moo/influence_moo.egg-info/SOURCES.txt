@@ -1,6 +1,11 @@
 setup.py
 influence_moo/__init__.py
+influence_moo/config.py
+influence_moo/hpc.py
 influence_moo/plotting.py
+influence_moo/run_ccea.py
+influence_moo/run_cli.py
+influence_moo/sbatch.py
 influence_moo/utils.py
 influence_moo/waves.py
 influence_moo.egg-info/PKG-INFO

@@ -14,7 +14,9 @@ TODO: Include checks for G_vec in the tests. Currently the tests do not check G_
 import unittest
 from copy import deepcopy
 import numpy as np
+import matplotlib
 import matplotlib.pyplot as plt
+matplotlib.use('TkAgg')
 from influence_moo.env.env import Rewards, AUV, ASV, POI, remove_agent
 from influence_moo.plotting import plot_grid, plot_pts
 from influence_moo.utils import check_path
@@ -356,6 +358,68 @@ class TestRewards(unittest.TestCase):
 
         self.spoof_3 = Spoof(pois, auvs, asvs, connectivity_grid, collision_step_size=0.1)
 
+    def setup_spoof_4(self):
+        """Rollout for marking pois vs not"""
+        connectivity_grid = np.ones((8,5))
+        connectivity_grid[-1,0] = 0
+        
+        pois = [
+            POI(position=np.array([1.0, 4.0]), value=1.0, observation_radius=1.0),
+            POI(position=np.array([4.0, 4.0]), value=1.0, observation_radius=1.0),
+            POI(position=np.array([7.0, 4.0]), value=1.0, observation_radius=1.0),
+            POI(position=np.array([1.0, 1.0]), value=1.0, observation_radius=2.0),
+        ]
+        poi_positions = np.array([poi.position for poi in pois])
+
+        auvs = [
+            AUV(targets=[None], max_velocity=None),
+            AUV(targets=[None], max_velocity=None),
+            AUV(targets=[None], max_velocity=None)
+        ]
+        auvs[0].path = np.array([
+            [1.0, 4.0],
+            [1.0, 4.0],
+            [4.0, 4.0],
+            [4.0, 4.0],
+            [7.0, 4.0],
+            [7.0, 4.0],
+        ], dtype=np.float32)
+        auvs[1].path = np.array([
+            [1.0, 2.5],
+            [4.0, 2.5],
+            [4.0, 2.5],
+            [4.0, 2.5],
+            [4.0, 2.5],
+            [4.0, 2.5],
+        ], dtype=np.float32)
+        auvs[2].path = np.array([
+            [4.0, 1.0],
+            [1.0, 1.0],
+            [1.0, 1.0],
+            [1.0, 1.0],
+            [1.0, 1.0],
+            [1.0, 1.0],
+        ], dtype=np.float32)
+        for auv in auvs:
+            auv.crash_history = 6*[False]
+
+        asvs = []
+
+        if self.VISUALIZE:
+            fig, ax = plt.subplots(1,1,dpi=100)
+            plot_grid(connectivity_grid, cmap='tab10_r')
+            plot_pts(poi_positions[:-1], ax, marker='o', fillstyle='none', linestyle='none',color='tab:green', markersize=80)
+            plot_pts(np.array([poi_positions[-1]]), ax, marker='o', fillstyle='none', linestyle='none',color='tab:green', markersize=160)
+            for auv in auvs:
+                plot_pts(auv.path, ax, ls=(0, (1,2)), color='pink', lw=1,)
+                plot_pts(np.array([auv.path[0]]), ax, ls=(0, (1,2)), color='pink', lw=1, marker='s')
+            for asv in asvs:
+                plot_pts(asv.path, ax, marker='+', color='orange')
+            ax.set_title("[Spoof4] Rollout for Testing Rewards")
+            plt.show()
+        
+        self.spoof_4 = Spoof(pois, auvs, asvs, connectivity_grid, collision_step_size=0.1)
+
     def get_spoof_0(self):
         if not 'spoof_0' in self.__class__.__dict__:
             self.setup_spoof_0()
@@ -370,6 +434,11 @@ class TestRewards(unittest.TestCase):
         if not "spoof_3" in self.__class__.__dict__:
             self.setup_spoof_3()
         return self.spoof_3
+
+    def get_spoof_4(self):
+        if not "spoof4" in self.__class__.__dict__:
+            self.setup_spoof_4()
+        return self.spoof_4
 
     def test_spoof_0a(self):
         """Test granular indirect difference reward to auvs' difference rewards as multiple rewards
@@ -758,6 +827,55 @@ class TestRewards(unittest.TestCase):
         expected_G = 2.0
         for a, e in zip(agent_rewards, expected_rewards):
             self.assertTrue(np.isclose(a,e))
+
+    def test_spoof_4(self):
+        """Test marking POIs"""
+        spoof_4 = self.get_spoof_4()
+        pois, auvs, asvs, connectivity_grid, collision_step_size = \
+            spoof_4.pois, spoof_4.auvs, spoof_4.asvs, spoof_4.connectivity_grid, spoof_4.collision_step_size
+        
+        # First let's get rewards without marking pois
+        config = {
+            "rewards":
+            {
+                "influence_heuristic": "no_crash_line_of_sight",
+                "influence_type": "granular",
+                "influence_scope": "local",
+                "trajectory_influence_threshold": 0.0,
+                "mark_pois": False,
+                "auv_reward": "none",
+                "asv_reward": "global",
+                "multi_reward": "single",
+                "distance_threshold": 0.0
+            }
+        }
+        rewards = Rewards(
+            pois=pois,
+            connectivity_grid=connectivity_grid,
+            collision_step_size=collision_step_size,
+            config=config
+        )
+        _, G, _, G_vec = rewards.compute(auvs, asvs)
+        expected_G = 11.+1/1.5
+        self.assertTrue(G, expected_G)
+        expected_G_vec = [1+1./1.5,2,2,2,2,2]
+        for a, e in zip(G_vec, expected_G_vec):
+            self.assertTrue(np.isclose(a,e), f'{a} != {e}')
+
+        # Now try it with marking pois
+        config['rewards']['mark_pois'] = True
+        rewards = Rewards(
+            pois=pois,
+            connectivity_grid=connectivity_grid,
+            collision_step_size=collision_step_size,
+            config=config
+        )
+        _, G, _, G_vec = rewards.compute(auvs, asvs)
+        expected_G = 4
+        self.assertTrue(np.isclose(G, expected_G), f'Global reward incomputed incorrectly when marking pois. G != expected_G, {G} != {expected_G}')
+        expected_G_vec = [1+1/1.5,1-1/1.5,1,0,1,0]
+        for a, e in zip(G_vec, expected_G_vec):
+            self.assertTrue(np.isclose(a, e))
 
 if __name__ == '__main__':
     unittest.main()

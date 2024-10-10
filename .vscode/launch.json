@@ -34,6 +34,13 @@
             "args": "TestRewards.test_spoof_0c"
         },
         {
+            "name": "TestRewards test_rewards.test_spoof_4",
+            "type": "debugpy",
+            "request": "launch",
+            "program": "~/influence-multi-objective/tests/test_rewards.py",
+            "args": "TestRewards.test_spoof_4"
+        },
+        {
             "name": "Raytracing",
             "type": "debugpy",
             "request": "launch",

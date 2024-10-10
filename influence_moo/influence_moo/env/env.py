@@ -112,6 +112,9 @@ class Rewards():
         self.asv_reward = config['rewards']['asv_reward']
         self.multi_reward = config['rewards']['multi_reward']
         self.distance_threshold = config['rewards']['distance_threshold']
+        self.mark_pois = False
+        if 'mark_pois' in config['rewards']:
+            self.mark_pois = config['rewards']['mark_pois']
         self.config = config
 
     def local_auv_reward(self, auv):
@@ -175,6 +178,12 @@ class Rewards():
         for agent in (auvs+asvs)[1:]:
             if len(agent.path) != num_steps:
                 raise Exception("Agents have different length paths")
+            
+        # Init poi scores
+        # Track if we have marked this POI observed
+        # (We only use this attribute if we configure the reward to mark POIs)
+        for poi in self.pois:
+            poi.score = 0.0
 
         G_total = 0
         G_vec=np.zeros(num_steps)
@@ -201,7 +210,13 @@ class Rewards():
             for poi, auv_info in zip(self.pois, nearest_auvs):
                 # Make sure this POI was observed
                 if auv_info.auv_ind is not None and auv_info.distance <= poi.observation_radius:
-                    G_step += 1./np.max((auv_info.distance, 1.)) * poi.value
+                    if self.mark_pois:
+                        new_score = 1./np.max((auv_info.distance, 1.)) * poi.value
+                        if new_score > poi.score:
+                            G_step += new_score - poi.score
+                            poi.score = new_score
+                    else:
+                        G_step += 1./np.max((auv_info.distance, 1.)) * poi.value
 
             # Add this step-wise reward to the trajectory reward
             G_total += G_step
