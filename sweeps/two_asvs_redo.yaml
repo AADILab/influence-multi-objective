@@ -8,7 +8,7 @@ base_dict:
       independent_probability: 0.5
       mean: 0.0
       std_deviation: 1.0
-    num_generations: 10000
+    num_generations: 2000
     selection:
       n_elites_binary_tournament:
         include_elites_in_tournament: true
@@ -19,7 +19,7 @@ base_dict:
       upper_bound: 1.0
   data:
     save_trajectories:
-      num_gens_between_save: 10
+      num_gens_between_save: 100
       switch: true
   env:
     asv_params:
